@@ -16,9 +16,9 @@ export default function VisasPage() {
               <ul className="small">
                 <li>
                   Fiancé(e) visa (K-1 / I-129F) —{' '}
-                  <Link href="/flow/us/i-129f" className="underline">Start</Link>{' '}
+                  <a href="/flow/us/i-129f" className="underline">Start</a>
                   <span className="text-slate-500">|</span>{' '}
-                  <Link href="/checkout/us/i-129f" className="underline">Checkout</Link>
+                  <a href="/checkout/us/i-129f" className="underline">Checkout</a>
                 </li>
                 <li>Family, work, study — coming soon</li>
               </ul>
