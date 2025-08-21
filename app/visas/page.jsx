@@ -1,4 +1,4 @@
-import Link from 'next/link'
+ // no import needed
 
 export const metadata = { title: 'Visas | Liaison', description: 'Browse visa workflows.' }
 
