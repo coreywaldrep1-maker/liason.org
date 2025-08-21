@@ -1,4 +1,4 @@
- // no import needed
+import Link from 'next/link'
 
 export const metadata = { title: 'Visas | Liaison', description: 'Browse visa workflows.' }
 
@@ -16,9 +16,9 @@ export default function VisasPage() {
               <ul className="small">
                 <li>
                   Fiancé(e) visa (K-1 / I-129F) —{' '}
-                  <a href="/flow/us/i-129f" className="underline">Start</a>
+                  <Link href="/flow/us/i-129f" className="underline">Start</Link>
                   <span className="text-slate-500">|</span>{' '}
-                  <a href="/checkout/us/i-129f" className="underline">Checkout</a>
+                  <Link href="/checkout/us/i-129f" className="underline">Checkout</Link>
                 </li>
                 <li>Family, work, study — coming soon</li>
               </ul>
