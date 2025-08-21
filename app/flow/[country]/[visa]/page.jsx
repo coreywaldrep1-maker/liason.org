@@ -3,7 +3,7 @@ export const dynamicParams = true;
 export function generateMetadata({ params }) {
   const { country, visa } = params || {};
   return {
-    title: `Start ${country?.toUpperCase() || ''} ${visa?.toUpperCase() || ''} | Liaison`,
+    title: `Start ${country?.toUpperCase() || ''} ${visa?.toUpperCase() || ''} | Liason`,
     description: 'Guided visa preparation wizard.',
   };
 }
@@ -16,7 +16,8 @@ export default function FlowPage({ params }) {
         <h1 style={{fontSize:28, fontWeight:600, margin:0}}>Start: {country?.toUpperCase()} / {visa?.toUpperCase()}</h1>
         <p className="small">Upload your documents and answer a few questions. We’ll guide you with plain-language help for each section.</p>
 
-        <form className="card" method="post" encType="multipart/form-data" onSubmit={(e)=>e.preventDefault()}>
+        {/* NOTE: removed onSubmit */}
+        <form className="card" method="post" encType="multipart/form-data">
           <div style={{display:'grid', gap:12}}>
             <label className="small">Upload documents (PDF/JPG/PNG) — multiple allowed
               <br/>
@@ -39,5 +40,5 @@ export default function FlowPage({ params }) {
         <div className="small">Price: $500 per profile • PayPal & cards</div>
       </div>
     </main>
-  )
+  );
 }
