@@ -1,5 +1,5 @@
 export const metadata = {
-  title: 'Start US I-129F | Liaison',
+  title: 'Start US I-129F | Liason',
   description: 'Guided fiancé(e) visa (K-1 / I-129F) preparation.',
 };
 
@@ -10,7 +10,8 @@ export default function USI129FStart() {
         <h1 style={{fontSize:28, fontWeight:600, margin:0}}>Start: US / I-129F</h1>
         <p className="small">Upload your documents and answer a few questions. We’ll guide you with plain-language help for each section.</p>
 
-        <form className="card" method="post" encType="multipart/form-data" onSubmit={(e)=>e.preventDefault()}>
+        {/* NOTE: removed onSubmit */}
+        <form className="card" method="post" encType="multipart/form-data">
           <div style={{display:'grid', gap:12}}>
             <label className="small">Upload documents (PDF/JPG/PNG) — multiple allowed
               <br/>
