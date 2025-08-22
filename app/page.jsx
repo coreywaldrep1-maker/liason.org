@@ -9,7 +9,7 @@ export default function Home() {
       <section className="section hero">
         <div className="container" style={{textAlign:'center', display:'grid', gap:16}}>
           <img src="/logo.svg" alt="Liaison" style={{height:48, margin:'0 auto'}}/>
-          <h1 style={{fontSize:40, lineHeight:1.15, margin:0, fontWeight:800}}>We’re your liaison to making memories.</h1>
+          <h1 style={{fontSize:40, lineHeight:1.15, margin:0, fontWeight:800}}>We’re your liason to making memories.</h1>
           <p className="lead">Your journey together starts here. Simple, guided visa prep without the $10,000 price tag.</p>
           <div style={{display:'flex', gap:12, justifyContent:'center', marginTop:6}}>
             <a className="btn btn-primary" href="/visas">Get started</a>
