@@ -1,19 +1,20 @@
 {
-  "name": "liaison",
+  "name": "liason",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
-  "name": "liason",
-  "version": "1.0.0",
-  "dependencies": {
     "next": "14.2.5",
-    "react": "18.x",
-    "react-dom": "18.x",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
     "pdf-lib": "^1.17.1"
+  },
+  "engines": {
+    "node": ">=18.17.0"
   }
 }
