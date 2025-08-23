@@ -8,8 +8,12 @@
     "start": "next start"
   },
   "dependencies": {
+  "name": "liason",
+  "version": "1.0.0",
+  "dependencies": {
     "next": "14.2.5",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react": "18.x",
+    "react-dom": "18.x",
+    "pdf-lib": "^1.17.1"
   }
 }
