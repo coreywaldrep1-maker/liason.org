@@ -1,20 +1,18 @@
-import './globals.css'
-import HeaderBasic from '../components/HeaderBasic'
-import FooterBasic from '../components/FooterBasic'
+// app/layout.jsx
+import './globals.css';
+import SiteFooter from '../components/SiteFooter';
 
 export const metadata = {
-  title: 'Liason — Helping you bring love home.',
-  description: 'Affordable, multilingual visa preparation.',
-  icons: { icon: '/favicon.svg' },
+  title: 'Liason',
+  description: 'Guided, multilingual visa prep with simple steps and plain-language help.',
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        <HeaderBasic />
         {children}
-        <FooterBasic />
+        <SiteFooter />
       </body>
     </html>
   );
