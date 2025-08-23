@@ -20,9 +20,8 @@ export default function HomeMenu() {
       ref={panelRef}
       style={{
         position: 'fixed',
-        top: 16,
-        left: 16,           // <-- moved to LEFT
-        right: 'auto',
+        top: 72,          // ↓ sits below the header
+        left: 16,         // ← left-hand side
         zIndex: 50
       }}
     >
@@ -39,15 +38,15 @@ export default function HomeMenu() {
       {open && (
         <nav
           role="menu"
-          aria-label="Home quick links"
+          aria-label="Quick links"
           className="card"
           style={{ marginTop: 8, width: 220, display: 'grid', gap: 8 }}
         >
-          <a href="/" className="btn" role="menuitem">Home</a>                {/* <-- added */}
+          <a href="/" className="btn" role="menuitem">Home</a>
           <a href="/visas/us" className="btn" role="menuitem">US Visas</a>
           <a href="/visas/canada" className="btn" role="menuitem">Canada Visas</a>
           <a href="/visas/europe" className="btn" role="menuitem">Europe Visas</a>
-          <a href="/policies" className="btn" role="menuitem">Policies</a>    {/* own page */}
+          <a href="/policies" className="btn" role="menuitem">Policies</a>
         </nav>
       )}
     </div>
