@@ -15,11 +15,12 @@ export default function AiHelp({ section = 'general', context = '' }) {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState('');
+  const [err, setErr] = useState('');
 
   async function ask(e) {
     e.preventDefault();
     if (!message.trim()) return;
-    setBusy(true); setAnswer('');
+    setBusy(true); setAnswer(''); setErr('');
     try {
       const r = await fetch('/api/ai', {
         method: 'POST',
@@ -27,13 +28,15 @@ export default function AiHelp({ section = 'general', context = '' }) {
         body: JSON.stringify({ message, language, section, context })
       });
       const j = await r.json();
-      if (j.error) {
-        setAnswer(`There was an error: ${j.error}.`);
+      if (!r.ok || j.error) {
+        setErr(j.error || 'There was an error.');
+        if (j.details) console.error(j.details);
       } else {
         setAnswer(j.text || 'No answer.');
       }
-    } catch {
-      setAnswer('There was a problem contacting the AI.');
+    } catch (e) {
+      setErr('There was a problem contacting the AI.');
+      console.error(e);
     } finally {
       setBusy(false);
     }
@@ -60,9 +63,14 @@ export default function AiHelp({ section = 'general', context = '' }) {
           <button className="btn btn-primary" disabled={busy}>
             {busy ? 'Thinking…' : 'Ask Liason'}
           </button>
-          <span className="small" style={{opacity:0.8}}>Not legal advice.</span>
         </div>
       </form>
+
+      {err && (
+        <div className="card" style={{background:'#fff5f5', border:'1px solid #fecaca'}}>
+          <div className="small" style={{color:'#b91c1c'}}>{err}</div>
+        </div>
+      )}
 
       {answer && (
         <div className="card" style={{background:'#fafafa'}}>
