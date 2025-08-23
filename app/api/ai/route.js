@@ -1,6 +1,5 @@
-// app/api/ai/route.js  (DEBUG MODE)
+// app/api/ai/route.js
 import { NextResponse } from 'next/server';
-
 export const runtime = 'nodejs';
 
 const MODEL = process.env.LIASON_AI_MODEL || 'gpt-4o-mini';
@@ -13,14 +12,10 @@ Do not add disclaimers; the page already shows one.
 export async function POST(req) {
   try {
     const key = process.env.OPENAI_API_KEY;
-    if (!key) {
-      return NextResponse.json({ error: 'Missing OPENAI_API_KEY' }, { status: 500 });
-    }
+    if (!key) return NextResponse.json({ error: 'Missing OPENAI_API_KEY' }, { status: 500 });
 
     const { message, language = 'en', section = 'general', context = '' } = await req.json();
-    if (!message || !message.trim()) {
-      return NextResponse.json({ error: 'Empty message' }, { status: 400 });
-    }
+    if (!message || !message.trim()) return NextResponse.json({ error: 'Empty message' }, { status: 400 });
 
     const userPrompt = [
       `Language: ${language}`,
@@ -32,10 +27,7 @@ export async function POST(req) {
 
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: MODEL,
         temperature: 0.3,
@@ -46,24 +38,12 @@ export async function POST(req) {
       })
     });
 
-    // Return raw info if non-200 so we can see what OpenAI says
-    if (!r.ok) {
-      const text = await r.text();
-      return NextResponse.json({
-        error: 'Upstream error',
-        status: r.status,
-        statusText: r.statusText,
-        details: text.slice(0, 2000) // avoid huge payloads
-      }, { status: 502 });
-    }
+    if (!r.ok) return NextResponse.json({ error: 'Upstream error' }, { status: 502 });
 
     const j = await r.json();
     const raw = (j?.choices?.[0]?.message?.content || '').trim();
     const text = raw.replace(/\s*not legal advice\.?$/i, '').trim();
-
-    if (!text) {
-      return NextResponse.json({ error: 'Empty model response' }, { status: 502 });
-    }
+    if (!text) return NextResponse.json({ error: 'Empty model response' }, { status: 502 });
 
     return NextResponse.json({ text });
   } catch (e) {
