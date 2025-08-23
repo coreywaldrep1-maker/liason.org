@@ -1,4 +1,7 @@
-import AiHelp from '@/components/AiHelp'; // If no alias, use: ../../../../components/AiHelp
+// If you have the @ alias configured, use:
+// import AiHelp from '@/components/AiHelp';
+// Otherwise, use the relative path:
+import AiHelp from '../../../../components/AiHelp';
 
 export const metadata = {
   title: 'Start US I-129F | Liason',
@@ -10,9 +13,17 @@ export default function USI129FStart() {
     <main className="section">
       <div className="container" style={{display:'grid', gap:16}}>
         <h1 style={{fontSize:28, fontWeight:600, margin:0}}>Start: US / I-129F</h1>
-        <p className="small">Upload your documents and answer a few questions. We’ll guide you with plain-language help for each section.</p>
 
-        {/* NOTE: server component: keep plain HTML attributes only (no onSubmit here) */}
+        {/* Single, page-level disclaimer */}
+        <p className="small" style={{opacity:0.8}}>
+          Liason provides general information and document-prep help. Not legal advice.
+        </p>
+
+        <p className="small">
+          Upload your documents and answer a few questions. We’ll guide you with plain-language help for each section.
+        </p>
+
+        {/* Keep this simple server-side form for now */}
         <form className="card" method="post" encType="multipart/form-data">
           <div style={{display:'grid', gap:12}}>
             <label className="small">Upload documents (PDF/JPG/PNG) — multiple allowed
