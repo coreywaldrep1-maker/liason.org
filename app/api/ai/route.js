@@ -1,4 +1,4 @@
-// app/api/ai/route.js
+// app/api/ai/route.js  (DEBUG MODE)
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -18,7 +18,6 @@ export async function POST(req) {
     }
 
     const { message, language = 'en', section = 'general', context = '' } = await req.json();
-
     if (!message || !message.trim()) {
       return NextResponse.json({ error: 'Empty message' }, { status: 400 });
     }
@@ -47,15 +46,20 @@ export async function POST(req) {
       })
     });
 
-    // If OpenAI returns non-200, surface details so we can debug
+    // Return raw info if non-200 so we can see what OpenAI says
     if (!r.ok) {
-      const details = await r.text();
-      return NextResponse.json({ error: 'Upstream error', details }, { status: 502 });
+      const text = await r.text();
+      return NextResponse.json({
+        error: 'Upstream error',
+        status: r.status,
+        statusText: r.statusText,
+        details: text.slice(0, 2000) // avoid huge payloads
+      }, { status: 502 });
     }
 
     const j = await r.json();
     const raw = (j?.choices?.[0]?.message?.content || '').trim();
-    const text = raw.replace(/\s*not legal advice\.?$/i, '').trim(); // scrub trailing disclaimers just in case
+    const text = raw.replace(/\s*not legal advice\.?$/i, '').trim();
 
     if (!text) {
       return NextResponse.json({ error: 'Empty model response' }, { status: 502 });
