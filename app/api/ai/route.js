@@ -1,7 +1,6 @@
 // app/api/ai/route.js
 import { NextResponse } from 'next/server';
 
-// Run on Node
 export const runtime = 'nodejs';
 
 const MODEL = process.env.LIASON_AI_MODEL || 'gpt-4o-mini';
@@ -48,6 +47,7 @@ export async function POST(req) {
       })
     });
 
+    // If OpenAI returns non-200, surface details so we can debug
     if (!r.ok) {
       const details = await r.text();
       return NextResponse.json({ error: 'Upstream error', details }, { status: 502 });
@@ -55,9 +55,7 @@ export async function POST(req) {
 
     const j = await r.json();
     const raw = (j?.choices?.[0]?.message?.content || '').trim();
-
-    // Strip any trailing disclaimer if the model adds one anyway
-    const text = raw.replace(/\s*not legal advice\.?$/i, '').trim();
+    const text = raw.replace(/\s*not legal advice\.?$/i, '').trim(); // scrub trailing disclaimers just in case
 
     if (!text) {
       return NextResponse.json({ error: 'Empty model response' }, { status: 502 });
