@@ -1,4 +1,6 @@
 // app/visas/us/page.jsx
+import Hero from '../../../components/Hero';
+
 export const metadata = {
   title: 'US Visas | Liason',
   description: 'Explore US visa categories supported by Liason.',
@@ -8,8 +10,16 @@ export default function USVisasPage() {
   return (
     <main className="section">
       <div className="container" style={{display:'grid', gap:16}}>
-        <h1 style={{fontSize:28, fontWeight:600, margin:0}}>US Visas</h1>
-        <p className="small">Start with the fiancé(e) visa (K-1 / I-129F). More categories coming soon.</p>
+        <Hero
+          size="sm"
+          image="/hero-us.jpg" // optional — if missing, it still looks fine; place file in /public
+          title="United States — Visa pathways"
+          subtitle="We’ll start you with K-1 (I-129F) and expand to family, work, and study categories."
+          ctas={[
+            { href: '/flow/us/i-129f', label: 'Start K-1 (I-129F)', primary: true },
+            { href: '/checkout/us/i-129f', label: 'Checkout' }
+          ]}
+        />
 
         <div className="card" style={{display:'grid', gap:8}}>
           <strong>Fiancé(e) visa (K-1 / I-129F)</strong>
