@@ -14,14 +14,6 @@ export default function DpaPage() {
         </p>
 
         <section className="card" style={{display:'grid', gap:8}}>
-          <h2 style={{margin:0}}>Contact for Data Matters</h2>
-          <div className="small">
-            General support: <a href="mailto:helpdesk@liason.org">helpdesk@liason.org</a><br/>
-            Billing inquiries: <a href="mailto:billing@liason.org">billing@liason.org</a>
-          </div>
-        </section>
-
-        <section className="card" style={{display:'grid', gap:8}}>
           <h2 style={{margin:0}}>Purpose of Processing</h2>
           <div className="small">
             We process your uploads and answers solely to prepare your visa application materials and improve your experience.
@@ -32,6 +24,13 @@ export default function DpaPage() {
           <h2 style={{margin:0}}>Data Sharing</h2>
           <div className="small">
             We do not sell personal data. Limited third-party processors (e.g., hosting, payment) are used under contract to provide the service.
+          </div>
+        </section>
+
+        <section className="card" style={{display:'grid', gap:8}}>
+          <h2 style={{margin:0}}>Contact for Data Matters</h2>
+          <div className="small">
+            See the footer on any page for Support and Billing contact details.
           </div>
         </section>
       </div>
