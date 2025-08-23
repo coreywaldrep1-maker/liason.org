@@ -9,7 +9,7 @@ export const metadata = {
 export default function HomePage() {
   return (
     <main className="section">
-      {/* Floating menu button (top-right) */}
+      {/* Floating menu button (top-left now) */}
       <HomeMenu />
 
       <div className="container" style={{display:'grid', gap:16}}>
@@ -33,7 +33,7 @@ export default function HomePage() {
             <a className="btn" href="/visas/us">US Visas</a>
             <a className="btn" href="/visas/canada">Canada Visas</a>
             <a className="btn" href="/visas/europe">Europe Visas</a>
-            <a className="btn" href="/policies">Policies</a>
+            <a className="btn" href="/policies">Policies</a> {/* policies is its own page */}
           </div>
         </div>
       </div>
