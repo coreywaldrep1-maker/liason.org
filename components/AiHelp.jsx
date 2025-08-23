@@ -29,8 +29,8 @@ export default function AiHelp({ section = 'general', context = '' }) {
       });
       const j = await r.json();
       if (!r.ok || j.error) {
-        setErr(j.error || 'There was an error.');
-        if (j.details) console.error(j.details);
+        const d = (j && j.details) ? String(j.details).slice(0, 400) : '';
+        setErr((j.error || 'There was an error.') + (d ? ` — ${d}` : ''));
       } else {
         setAnswer(j.text || 'No answer.');
       }
@@ -46,7 +46,17 @@ export default function AiHelp({ section = 'general', context = '' }) {
     <div className="card" style={{display:'grid', gap:12}}>
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', gap:8}}>
         <strong>Liason AI Help</strong>
-        <select value={language} onChange={(e)=>setLanguage(e.target.value)} aria-label="Language">
+        <select
+          value={language}
+          onChange={(e)=>setLanguage(e.target.value)}
+          aria-label="Language"
+          style={{
+            backgroundColor:'#fff',
+            border:'1px solid #e2e8f0',
+            borderRadius:8,
+            padding:'6px 8px'
+          }}
+        >
           {LANGS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
         </select>
       </div>
@@ -57,7 +67,13 @@ export default function AiHelp({ section = 'general', context = '' }) {
           placeholder="Ask a question about this section…"
           value={message}
           onChange={(e)=>setMessage(e.target.value)}
-          style={{width:'100%', padding:8, border:'1px solid #e2e8f0', borderRadius:8}}
+          style={{
+            width:'100%',
+            padding:8,
+            border:'1px solid #e2e8f0',
+            borderRadius:8,
+            backgroundColor:'#fff'   // <-- makes the box white
+          }}
         />
         <div style={{display:'flex', gap:8, alignItems:'center'}}>
           <button className="btn btn-primary" disabled={busy}>
