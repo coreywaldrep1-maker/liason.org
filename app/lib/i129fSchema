@@ -1,0 +1,77 @@
+// lib/i129fSchema.js
+const i129f = {
+  id: 'i129f',
+  title: 'US Fiancé(e) Visa (K-1 / I-129F)',
+  priceUSD: 500,
+  sections: [
+    {
+      id: 'petitioner',
+      title: 'Petitioner (US citizen)',
+      fields: [
+        { id: 'pet_first', label: 'First (Given) Name', type: 'text', required: true },
+        { id: 'pet_middle', label: 'Middle Name', type: 'text' },
+        { id: 'pet_last', label: 'Family (Last) Name', type: 'text', required: true },
+        { id: 'pet_dob', label: 'Date of Birth', type: 'date', required: true },
+        { id: 'pet_pob', label: 'Place of Birth (City, Country)', type: 'text', required: true },
+        { id: 'pet_ssn', label: 'SSN (optional)', type: 'text', pattern: '^\\d{3}-?\\d{2}-?\\d{4}$' },
+        { id: 'pet_us_citizen', label: 'Are you a US citizen?', type: 'select', options: ['Yes','No'], required: true },
+        { id: 'pet_email', label: 'Email', type: 'email', required: true },
+        { id: 'pet_phone', label: 'Phone', type: 'tel', required: true },
+        { id: 'pet_address', label: 'Current Address', type: 'textarea', required: true },
+      ],
+    },
+    {
+      id: 'beneficiary',
+      title: 'Beneficiary (fiancé(e))',
+      fields: [
+        { id: 'ben_first', label: 'First (Given) Name', type: 'text', required: true },
+        { id: 'ben_middle', label: 'Middle Name', type: 'text' },
+        { id: 'ben_last', label: 'Family (Last) Name', type: 'text', required: true },
+        { id: 'ben_dob', label: 'Date of Birth', type: 'date', required: true },
+        { id: 'ben_pob', label: 'Place of Birth (City, Country)', type: 'text', required: true },
+        { id: 'ben_passport', label: 'Passport Number', type: 'text' },
+        { id: 'ben_address', label: 'Current Address (abroad)', type: 'textarea', required: true },
+      ],
+    },
+    {
+      id: 'relationship',
+      title: 'Relationship info',
+      fields: [
+        { id: 'met_in_person', label: 'Met in person within 2 years?', type: 'select', options: ['Yes','No'], required: true },
+        { id: 'met_dates', label: 'When/where did you meet?', type: 'textarea', required: true },
+        { id: 'intent_to_marry', label: 'Intent to marry within 90 days of entry?', type: 'select', options: ['Yes','No'], required: true },
+      ],
+    },
+    {
+      id: 'supporting',
+      title: 'Supporting documents',
+      fields: [
+        { id: 'files', label: 'Upload (PDF/JPG/PNG) — optional', type: 'file', accept: '.pdf,.jpg,.jpeg,.png', multiple: true },
+        { id: 'notes', label: 'Notes (optional)', type: 'textarea' },
+      ],
+    },
+  ],
+  // If you later add a fillable PDF at /public/forms/i-129f.pdf, map its field names here:
+  pdfFieldMap: {
+    pet_first: 'Petitioner_GivenName',
+    pet_middle: 'Petitioner_MiddleName',
+    pet_last: 'Petitioner_FamilyName',
+    pet_dob: 'Petitioner_DOB',
+    pet_pob: 'Petitioner_PlaceOfBirth',
+    pet_ssn: 'Petitioner_SSN',
+    pet_email: 'Petitioner_Email',
+    pet_phone: 'Petitioner_Phone',
+    pet_address: 'Petitioner_Address',
+    ben_first: 'Beneficiary_GivenName',
+    ben_middle: 'Beneficiary_MiddleName',
+    ben_last: 'Beneficiary_FamilyName',
+    ben_dob: 'Beneficiary_DOB',
+    ben_pob: 'Beneficiary_PlaceOfBirth',
+    ben_passport: 'Beneficiary_Passport',
+    ben_address: 'Beneficiary_Address',
+    met_in_person: 'Rel_MetIn2Years',
+    met_dates: 'Rel_MeetingDetails',
+    intent_to_marry: 'Rel_Intent90Days',
+  },
+};
+export default i129f;
