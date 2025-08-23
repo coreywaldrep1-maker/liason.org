@@ -1,48 +1,42 @@
+// app/page.jsx
+import HomeMenu from '../components/HomeMenu';
+
 export const metadata = {
-  title: 'Liason — Helping you bring love home.',
-  description: 'Affordable, multilingual visa preparation.',
+  title: 'Liason — Visa Prep',
+  description: 'Guided, multilingual visa preparation with simple steps and plain-language help.',
 };
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <main>
-      <section className="section hero">
-        <div className="container" style={{textAlign:'center', display:'grid', gap:16}}>
-          <img src="/logo.svg" alt="Liaison" style={{height:48, margin:'0 auto'}}/>
-          <h1 style={{fontSize:40, lineHeight:1.15, margin:0, fontWeight:800}}>We’re your liason to making memories.</h1>
-          <p className="lead">Your journey together starts here. Simple, guided visa prep without the $10,000 price tag.</p>
-          <div style={{display:'flex', gap:12, justifyContent:'center', marginTop:6}}>
-            <a className="btn btn-primary" href="/visas">Get started</a>
-            <a className="btn btn-ghost" href="/policies">Read our policies</a>
-          </div>
-          <div className="small">Secure • Multilingual • PayPal & cards • $500 per profile</div>
-        </div>
-      </section>
+    <main className="section">
+      {/* Floating menu button (top-right) */}
+      <HomeMenu />
 
-      <section className="section">
-        <div className="container">
-          <div className="grid grid-3">
-            <div className="card">
-              <h3 style={{marginTop:0}}>Guided, step-by-step</h3>
-              <p className="small">Plain-language questions mapped to each form section with checklists and upload tips.</p>
-            </div>
-            <div className="card">
-              <h3 style={{marginTop:0}}>Your data, your control</h3>
-              <p className="small">We don’t sell your data. Keep it locally, optionally encrypt with a passphrase, export when ready.</p>
-            </div>
-            <div className="card">
-              <h3 style={{marginTop:0}}>Transparent pricing</h3>
-              <p className="small">Flat $500 per profile via PayPal/credit card. No hidden fees, no subscriptions.</p>
-            </div>
+      <div className="container" style={{display:'grid', gap:16}}>
+        <h1 style={{fontSize:28, fontWeight:600, margin:0}}>Liason</h1>
+        <p className="small">
+          Guided, multilingual visa preparation. Start with the fiancé(e) visa (K-1 / I-129F), with more categories coming soon.
+        </p>
+
+        <div className="card" style={{display:'grid', gap:12}}>
+          <strong>Fiancé(e) visa (K-1 / I-129F)</strong>
+          <div className="small">Price: $500 per profile • PayPal & cards</div>
+          <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+            <a className="btn btn-primary" href="/flow/us/i-129f">Start</a>
+            <a className="btn" href="/checkout/us/i-129f">Checkout</a>
           </div>
         </div>
-      </section>
 
-      <section className="section" style={{paddingTop:0}}>
-        <div className="container" style={{textAlign:'center'}}>
-          <a className="btn btn-primary" href="/visas">Browse visas</a>
+        <div className="card" style={{display:'grid', gap:8}}>
+          <strong>Browse visas</strong>
+          <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+            <a className="btn" href="/visas/us">US Visas</a>
+            <a className="btn" href="/visas/canada">Canada Visas</a>
+            <a className="btn" href="/visas/europe">Europe Visas</a>
+            <a className="btn" href="/policies">Policies</a>
+          </div>
         </div>
-      </section>
+      </div>
     </main>
   );
 }
