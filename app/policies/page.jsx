@@ -12,14 +12,6 @@ export default function PoliciesPage() {
         <p className="small">Plain-language summary of how we operate.</p>
 
         <section className="card" style={{display:'grid', gap:8}}>
-          <h2 style={{margin:0}}>Contact</h2>
-          <div className="small">
-            Support: <a href="mailto:helpdesk@liason.org">helpdesk@liason.org</a><br/>
-            Billing: <a href="mailto:billing@liason.org">billing@liason.org</a>
-          </div>
-        </section>
-
-        <section className="card" style={{display:'grid', gap:8}}>
           <h2 style={{margin:0}}>Privacy & Data Use</h2>
           <div className="small">
             We only use the information you provide to help you prepare your application.
@@ -31,6 +23,13 @@ export default function PoliciesPage() {
           <h2 style={{margin:0}}>Not Legal Advice</h2>
           <div className="small">
             Liason is not a law firm and does not provide legal advice. For legal advice, consult a licensed attorney.
+          </div>
+        </section>
+
+        <section className="card" style={{display:'grid', gap:8}}>
+          <h2 style={{margin:0}}>How to reach us</h2>
+          <div className="small">
+            See the footer on any page for Support and Billing contact details.
           </div>
         </section>
       </div>
