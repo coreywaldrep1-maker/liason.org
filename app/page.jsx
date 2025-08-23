@@ -1,5 +1,5 @@
 // app/page.jsx
-import HomeMenu from '../components/HomeMenu';
+import Hero from '../components/Hero';
 
 export const metadata = {
   title: 'Liason — Visa Prep',
@@ -9,14 +9,16 @@ export const metadata = {
 export default function HomePage() {
   return (
     <main className="section">
-      {/* Floating menu button (top-left now) */}
-      <HomeMenu />
-
       <div className="container" style={{display:'grid', gap:16}}>
-        <h1 style={{fontSize:28, fontWeight:600, margin:0}}>Liason</h1>
-        <p className="small">
-          Guided, multilingual visa preparation. Start with the fiancé(e) visa (K-1 / I-129F), with more categories coming soon.
-        </p>
+        <Hero
+          image="/hero.jpg"  // <-- put your image in /public/hero.jpg
+          title="Start your visa journey with confidence"
+          subtitle="Simple steps, plain-language guidance, and a friendly helper—so you can focus on what matters: being together."
+          ctas={[
+            { href: '/flow/us/i-129f', label: 'Start K-1 (I-129F)', primary: true },
+            { href: '/visas/us', label: 'Browse US Visas' }
+          ]}
+        />
 
         <div className="card" style={{display:'grid', gap:12}}>
           <strong>Fiancé(e) visa (K-1 / I-129F)</strong>
@@ -33,7 +35,7 @@ export default function HomePage() {
             <a className="btn" href="/visas/us">US Visas</a>
             <a className="btn" href="/visas/canada">Canada Visas</a>
             <a className="btn" href="/visas/europe">Europe Visas</a>
-            <a className="btn" href="/policies">Policies</a> {/* policies is its own page */}
+            <a className="btn" href="/policies">Policies</a>
           </div>
         </div>
       </div>
