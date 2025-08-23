@@ -1,24 +1,51 @@
-:root{
-  --brand:#2563eb;
-  --accent:#f43f5e;
-  --ink:#0f172a;
-  --muted:#475569;
-  --bg:#ffffff;
-  --ring:#e2e8f0;
-  --radius:16px;
+/* ==== Force light form fields (inputs, textareas, selects) ==== */
+:root {
+  /* Prevent Safari/iOS from auto-darkening form controls */
+  color-scheme: light;
 }
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
-a{color:var(--brand);text-decoration:none}
-a:hover{text-decoration:underline}
-.container{max-width:1080px;margin:0 auto;padding:0 16px}
-.section{padding:64px 0}
-.hero{background:linear-gradient(135deg,#eef2ff,#fff1f2)}
-.btn{display:inline-block;padding:10px 16px;border-radius:999px;border:1px solid var(--brand)}
-.btn-primary{background:var(--brand);color:#fff;border-color:var(--brand)}
-.btn-ghost{background:#fff;color:var(--brand)}
-.card{background:#fff;border:1px solid var(--ring);border-radius:var(--radius);padding:20px;box-shadow:0 10px 20px rgba(2,6,23,.05)}
-.grid{display:grid;gap:16px}
-@media(min-width:768px){ .grid-3{grid-template-columns:repeat(3,1fr)} }
-.small{color:var(--muted);font-size:14px}
-.lead{color:var(--muted);font-size:18px;line-height:1.6}
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+textarea,
+select {
+  background-color: #fff !important; /* hard force white */
+  color: #0f172a;                     /* slate-900-ish */
+  border: 1px solid #e2e8f0;          /* slate-200 */
+  border-radius: 8px;
+}
+
+/* Placeholder color (subtle) */
+input::placeholder,
+textarea::placeholder {
+  color: #94a3b8; /* slate-400 */
+}
+
+/* Remove default dropdown styling artifacts */
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: none;
+}
+
+/* Focus state: accessible blue outline */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid #3b82f6;          /* blue-500 */
+  outline-offset: 1px;
+  border-color: #93c5fd;               /* blue-300 */
+  box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+}
+
+/* Extra nudge for iOS Safari if needed */
+@supports (-webkit-touch-callout: none) {
+  input, textarea, select {
+    background-color: #fff !important;
+  }
+}
