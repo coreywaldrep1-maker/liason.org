@@ -1,46 +1,36 @@
-export const metadata = { title: 'Visas | Liason', description: 'Browse visa workflows.' };
+'use client';
+import PayButtons from '../../../components/PayButtons';
+import Hero from '../../../components/Hero';
 
-export default function VisasPage() {
+export default function CheckoutI129F() {
   return (
-    <main>
-      <section className="section">
-        <div className="container" style={{ display: 'grid', gap: 16 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 600 }}>Browse visas</h1>
-          <p className="text-slate-600">
-            Start with a country and a visa type. Add documents, answer guided questions, export your packet.
-          </p>
+    <main className="section">
+      <div className="container" style={{display:'grid', gap:16}}>
+        <Hero
+          size="sm"
+          title="Checkout — K-1 (I-129F)"
+          subtitle="Pay securely with PayPal or credit card. You’ll be sent back to your wizard with access marked as paid."
+        />
 
-          <div className="grid grid-3">
-            <div className="card">
-              <h3 style={{ marginTop: 0 }}>United States</h3>
-              <ul className="small">
-                <li>
-                  Fiancé(e) visa (K-1 / I-129F) —{' '}
-                  <a href="/flow/us/i-129f" className="underline">Start</a>{' '}
-                  <span className="text-slate-500">|</span>{' '}
-                  <a href="/checkout/us/i-129f" className="underline">Checkout</a>
-                </li>
-                <li>Family, work, study — coming soon</li>
-              </ul>
-            </div>
-
-            <div className="card">
-              <h3 style={{ marginTop: 0 }}>Canada</h3>
-              <p className="small">Planned: spousal sponsorship, study permit, work permit.</p>
-            </div>
-
-            <div className="card">
-              <h3 style={{ marginTop: 0 }}>Europe</h3>
-              <p className="small">Planned: Schengen guidance; select country workflows.</p>
-            </div>
+        <div className="card" style={{display:'grid', gap:12}}>
+          <div style={{display:'flex', justifyContent:'space-between'}}>
+            <strong>Liason — Visa Prep Profile</strong>
+            <strong>$500.00</strong>
           </div>
-
-          <div style={{ paddingTop: 12 }}>
-            <a href="/" className="btn btn-primary">Back to home</a>
+          <div className="small" style={{color:'#64748b'}}>
+            Includes: guided answers, AI help in multiple languages, draft PDF, and a pre-submission checklist.
           </div>
+          <PayButtons
+            amount={500}
+            description="Liason — Visa Prep Profile (I-129F)"
+            onSuccess={() => { window.location.href = '/flow/us/i-129f?paid=1'; }}
+          />
         </div>
-      </section>
+
+        <div className="small" style={{color:'#64748b'}}>
+          Not legal advice. For legal advice, consult a licensed attorney.
+        </div>
+      </div>
     </main>
   );
 }
-
