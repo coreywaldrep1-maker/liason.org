@@ -1,6 +1,6 @@
 'use client';
-import PayButtons from '../../../components/PayButtons';
-import Hero from '../../../components/Hero';
+import PayButtons from '../../../../components/PayButtons';
+import Hero from '../../../../components/Hero';
 
 export default function CheckoutI129F() {
   return (
