@@ -1,10 +1,10 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
-import AiHelp from './AiHelp'; // assumes components/AiHelp.jsx already exists
+import { useEffect, useState } from 'react';
+import AiHelp from './AiHelp'; // keep this; stub below if needed
 
 const STORAGE_KEY = 'liason:i129f';
 
-const DEFAULT_STEPS = [
+const STEPS = [
   {
     id: 'petitioner',
     title: 'Petitioner',
@@ -51,11 +51,9 @@ const DEFAULT_STEPS = [
 ];
 
 export default function I129fWizard() {
-  const steps = DEFAULT_STEPS;
   const [idx, setIdx] = useState(0);
   const [values, setValues] = useState({});
 
-  // Load/save local storage
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -66,14 +64,11 @@ export default function I129fWizard() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(values)); } catch {}
   }, [values]);
 
-  const step = steps[idx];
-  const percent = Math.round(((idx + 1) / steps.length) * 100);
+  const step = STEPS[idx];
+  const percent = Math.round(((idx + 1) / STEPS.length) * 100);
 
-  function update(id, v) {
-    setValues((old) => ({ ...old, [id]: v }));
-  }
-
-  function next() { if (idx < steps.length - 1) setIdx(idx + 1); }
+  function update(id, v) { setValues((old) => ({ ...old, [id]: v })); }
+  function next() { if (idx < STEPS.length - 1) setIdx(idx + 1); }
   function prev() { if (idx > 0) setIdx(idx - 1); }
 
   async function downloadDraft() {
@@ -136,12 +131,11 @@ export default function I129fWizard() {
         ))}
       </div>
 
-      {/* Friendly AI panel for this section */}
       <AiHelp section={step.id} context="Form: I-129F" />
 
       <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
         <button className="btn" onClick={prev} disabled={idx===0}>Back</button>
-        <button className="btn" onClick={next} disabled={idx===steps.length-1}>Next</button>
+        <button className="btn" onClick={next} disabled={idx===STEPS.length-1}>Next</button>
         <button className="btn" onClick={downloadDraft}>Download Draft PDF</button>
         <a className="btn btn-primary" href="/checkout/us/i-129f">Continue to Checkout</a>
       </div>
