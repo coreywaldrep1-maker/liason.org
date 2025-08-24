@@ -11,11 +11,10 @@ export default function PayButtons({
   const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
 
   useEffect(() => {
-    // Render after SDK loads
     if (!window.paypal || !ref.current) return;
     const btns = window.paypal.Buttons({
       style: { layout: 'vertical' },
-      fundingSource: undefined, // allow PayPal + cards
+      fundingSource: undefined, // PayPal + cards
       createOrder: (_, actions) => actions.order.create({
         purchase_units: [{
           amount: { value: String(Number(amount).toFixed(2)), currency_code: 'USD' },
