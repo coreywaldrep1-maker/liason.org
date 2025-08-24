@@ -1,26 +1,17 @@
 // components/Hero.jsx
-// Simple, reusable hero banner with background image or gradient.
-// Props:
-// - title (string)
-// - subtitle (string)
-// - size: 'lg' | 'sm' (default 'lg')
-// - image: path under /public (e.g., '/hero.jpg'); if omitted, uses gradient
-// - ctas: [{ href, label, primary?: boolean }]
-
 export default function Hero({
   title,
   subtitle = '',
   size = 'lg',
   image,
-  ctas = []
+  ctas = [],
+  overlay = 0.5,
 }) {
   const minH = size === 'sm' ? 260 : 380;
-
   const bg = image
-    ? `linear-gradient(rgba(15,23,42,.50), rgba(15,23,42,.50)), url('${image}') center/cover no-repeat`
+    ? `linear-gradient(rgba(15,23,42,${overlay}), rgba(15,23,42,${overlay})), url('${image}') center/cover no-repeat`
     : `linear-gradient(135deg, #eff6ff 0%, #fef2f2 100%)`;
-
-  const darkText = !image; // gradient-only version gets dark text
+  const darkText = !image;
 
   return (
     <section
@@ -29,7 +20,7 @@ export default function Hero({
         minHeight: minH,
         background: bg,
         borderRadius: 16,
-        border: image ? '1px solid #e2e8f0' : '1px solid #e2e8f0',
+        border: '1px solid #e2e8f0',
         overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',
@@ -61,12 +52,7 @@ export default function Hero({
             <span>💞</span> <span>Making memories. Bringing families together.</span>
           </div>
 
-          <h1 style={{
-            margin: 0,
-            fontSize: size === 'sm' ? 28 : 36,
-            fontWeight: 700,
-            letterSpacing: .2
-          }}>
+          <h1 style={{ margin: 0, fontSize: size === 'sm' ? 28 : 36, fontWeight: 700 }}>
             {title}
           </h1>
 
@@ -83,7 +69,7 @@ export default function Hero({
                   key={i}
                   href={c.href}
                   className={`btn ${c.primary ? 'btn-primary' : ''}`}
-                  style={c.primary ? {} : { background: darkText ? '#ffffff' : '#ffffff', borderColor: '#e2e8f0' }}
+                  style={c.primary ? {} : { background: '#ffffff', borderColor: '#e2e8f0' }}
                 >
                   {c.label}
                 </a>
