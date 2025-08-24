@@ -1,6 +1,5 @@
-// app/flow/us/i-129f/page.jsx
-import Hero from '../../../components/Hero';
-import I129fWizard from '../../../components/I129fWizard';
+import Hero from '../../../../components/Hero';
+import I129fWizard from '../../../../components/I129fWizard';
 
 export const metadata = {
   title: 'Start US I-129F | Liason',
