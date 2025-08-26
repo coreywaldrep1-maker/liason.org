@@ -1,114 +1,95 @@
-// app/api/i129f/route.js
 import { NextResponse } from 'next/server';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { getPool } from '@/lib/db';
+import { jwtVerify } from 'jose';
+import fs from 'fs';
+import path from 'path';
+
+const enc = new TextEncoder();
+
+async function getUserId() {
+  try {
+    const cookie = require('next/headers').cookies().get('liason_token')?.value;
+    if (!cookie) return null;
+    const { payload } = await jwtVerify(cookie, enc.encode(process.env.JWT_SECRET));
+    return payload.sub;
+  } catch { return null; }
+}
 
 export async function POST(req) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const values = body?.values || {};
-    const profileName = (body?.profileName || values?.petitioner_full_name || 'I-129F_Draft')
-      .toString()
-      .replace(/[^\w\-]+/g, '_');
+    const body = await req.json();
+    const passed = body?.values || {};
+    const userId = await getUserId();
+    let merged = { ...passed };
 
-    // Create a simple, clean summary PDF (Letter size)
-    const doc = await PDFDocument.create();
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-
-    let page = doc.addPage([612, 792]);
-    const { width } = page.getSize();
-    const margin = 40;
-    let y = 750;
-
-    const drawLine = () => {
-      page.drawLine({
-        start: { x: margin, y },
-        end: { x: width - margin, y },
-        thickness: 0.5,
-        color: rgb(0.88, 0.92, 0.96),
-      });
-      y -= 14;
-    };
-
-    const addHeading = (t) => {
-      page.drawText(t, { x: margin, y, size: 18, font: bold, color: rgb(0.11, 0.15, 0.24) });
-      y -= 24;
-    };
-
-    const addLabel = (t) => {
-      page.drawText(t, { x: margin, y, size: 11, font: bold, color: rgb(0.2, 0.2, 0.2) });
-      y -= 14;
-    };
-
-    const addValue = (t) => {
-      const text = String(t ?? '');
-      const max = 92; // simple wrap by characters
-      for (let i = 0; i < text.length; i += max) {
-        const slice = text.slice(i, i + max);
-        page.drawText(slice, { x: margin, y, size: 11, font, color: rgb(0.1, 0.1, 0.1) });
-        y -= 14;
-        if (y < 80) { page = doc.addPage([612, 792]); y = 750; }
-      }
-      y -= 6;
-    };
-
-    addHeading('USCIS I-129F — Draft Answers (Liason)');
-    drawLine();
-
-    const sections = [
-      ['Petitioner', [
-        ['Full name', values.petitioner_full_name],
-        ['Date of birth', values.petitioner_dob],
-        ['U.S. citizen?', values.petitioner_us_citizen],
-        ['Address', values.petitioner_address],
-        ['Phone', values.petitioner_phone],
-        ['Email', values.petitioner_email],
-      ]],
-      ['Beneficiary', [
-        ['Full name', values.beneficiary_full_name],
-        ['Date of birth', values.beneficiary_dob],
-        ['Birth country', values.beneficiary_birth_country],
-        ['Passport number', values.beneficiary_passport_number],
-        ['Address', values.beneficiary_address],
-      ]],
-      ['Relationship', [
-        ['Met in person?', values.met_in_person],
-        ['Most recent in-person date', values.met_date],
-        ['How you met (summary)', values.how_met],
-        ['Intent to marry within 90 days?', values.intent_to_marry_90_days],
-      ]],
-      ['Prior Filings / Marriages', [
-        ['Prior I-129F filings', values.prior_filings],
-        ['Petitioner prior marriages', values.petitioner_prior_marriages],
-        ['Beneficiary prior marriages', values.beneficiary_prior_marriages],
-      ]],
-      ['Notes', [
-        ['User notes', values.notes],
-      ]],
-    ];
-
-    for (const [sectionLabel, pairs] of sections) {
-      addLabel(sectionLabel);
-      for (const [label, val] of pairs) {
-        if (val == null || val === '') continue;
-        addValue(`${label}: ${val}`);
-      }
-      drawLine();
-      if (y < 120) { page = doc.addPage([612, 792]); y = 750; }
+    // Merge saved answers if logged in (server truth)
+    if (userId) {
+      const pool = getPool();
+      const { rows } = await pool.query(`select answers from i129f_answers where user_id=$1`, [userId]);
+      if (rows[0]?.answers) merged = { ...rows[0].answers, ...passed };
     }
 
-    const bytes = await doc.save();
+    // Load the blank form from public
+    const filePath = path.join(process.cwd(), 'public', 'i-129f.pdf');
+    const bytes = fs.readFileSync(filePath);
+    const pdfDoc = await PDFDocument.load(bytes);
+    const page = pdfDoc.getPages()[0];
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const color = rgb(0, 0, 0);
+    const size = 10;
 
-    return new NextResponse(bytes, {
+    // QUICK MAPPING EXAMPLE (x,y coordinates measured from bottom-left)
+    // Tweak numbers after testing to align with your template boxes.
+    const fields = [
+      { key:'petitioner_full_name',    x: 120, y: 680 },
+      { key:'petitioner_dob',          x: 120, y: 662 },
+      { key:'petitioner_us_citizen',   x: 120, y: 644 },
+      { key:'petitioner_address',      x: 120, y: 626 },
+      { key:'petitioner_phone',        x: 120, y: 608 },
+      { key:'petitioner_email',        x: 120, y: 590 },
+
+      { key:'beneficiary_full_name',   x: 120, y: 550 },
+      { key:'beneficiary_dob',         x: 120, y: 532 },
+      { key:'beneficiary_birth_country',x:120, y: 514 },
+      { key:'beneficiary_passport_number',x:120, y: 496 },
+      { key:'beneficiary_address',     x: 120, y: 478 },
+
+      { key:'met_in_person',           x: 120, y: 438 },
+      { key:'met_date',                x: 120, y: 420 },
+      { key:'how_met',                 x: 120, y: 402 },
+
+      { key:'intent_to_marry_90_days', x: 120, y: 362 },
+
+      { key:'prior_filings',           x: 120, y: 330 },
+      { key:'petitioner_prior_marriages', x:120, y: 312 },
+      { key:'beneficiary_prior_marriages',x:120, y: 294 },
+
+      { key:'prev_spouse_name',           x: 120, y: 256 },
+      { key:'prev_marriage_date',         x: 120, y: 238 },
+      { key:'prev_divorce_or_death_date', x: 120, y: 220 },
+      { key:'prev_marriage_location',     x: 120, y: 202 },
+
+      { key:'notes',                   x: 120, y: 170 },
+    ];
+
+    fields.forEach(f => {
+      const v = (merged[f.key] || '').toString();
+      if (v) {
+        page.drawText(v, { x:f.x, y:f.y, size, font, color, maxWidth: 400, lineHeight: 12 });
+      }
+    });
+
+    const pdf = await pdfDoc.save();
+    return new NextResponse(pdf, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${profileName}.pdf"`,
-        'Cache-Control': 'no-store',
-      },
+        'Content-Disposition': `attachment; filename="I-129F_Draft_Liason.pdf"`
+      }
     });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: 'Failed to generate PDF' }, { status: 500 });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: 'PDF error' }, { status: 500 });
   }
 }
