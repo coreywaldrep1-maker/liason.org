@@ -1,49 +1,64 @@
 'use client';
-import { useEffect, useState } from 'react';
-import Hero from '../../components/Hero';
+
+import { useState } from 'react';
+
+export const metadata = { title: 'Account | Liason' };
 
 export default function AccountPage() {
-  const [user, setUser] = useState(null);
-  const [paid, setPaid] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState('login'); // 'login' | 'signup'
+  const [email, setEmail] = useState('');
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
 
-  useEffect(()=> {
-    (async ()=>{
-      const me = await fetch('/api/auth/whoami').then(r=>r.json()).catch(()=>null);
-      if (me?.user) {
-        setUser(me.user);
-        const pay = await fetch('/api/payments/mark-paid', { method:'GET' }).then(r=>r.json()).catch(()=>({paid:false}));
-        setPaid(!!pay?.paid);
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true); setMsg('');
+    try {
+      const url = mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
+      const res = await fetch(url, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ email, password: pw })
+      });
+      const j = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(j.error || 'Request failed');
+      setMsg(mode === 'login' ? 'Signed in! Redirecting…' : 'Account created! You can sign in now.');
+      if (mode === 'login') {
+        setTimeout(()=> { window.location.href = '/flow/us/i-129f'; }, 700);
+      } else {
+        setMode('login');
       }
-      setLoading(false);
-    })();
-  }, []);
-
-  async function logout() {
-    await fetch('/api/auth/logout', { method:'POST' });
-    window.location.href = '/';
+    } catch (err) {
+      setMsg(err.message);
+    } finally {
+      setBusy(false);
+    }
   }
-
-  if (loading) return <main className="section"><div className="container">Loading…</div></main>;
-
-  if (!user) return (
-    <main className="section">
-      <div className="container" style={{display:'grid', gap:16}}>
-        <Hero size="sm" title="Account" subtitle="Please log in to view your profile." />
-        <a className="btn btn-primary" href="/login">Log in</a>
-      </div>
-    </main>
-  );
 
   return (
     <main className="section">
-      <div className="container" style={{display:'grid', gap:16}}>
-        <Hero size="sm" title="Your account" subtitle={`Signed in as ${user.email}`} />
-        <div className="card" style={{display:'grid', gap:8}}>
-          <div><strong>Payment status:</strong> {paid ? '✅ Paid' : '❌ Not paid'}</div>
-          <div><a className="btn" href="/flow/us/i-129f">Go to your I-129F</a></div>
-          {!paid && <div><a className="btn" href="/checkout/us/i-129f">Go to checkout</a></div>}
-          <div><button className="btn" onClick={logout}>Log out</button></div>
+      <div className="container" style={{maxWidth:520, display:'grid', gap:16}}>
+        <h1 style={{margin:0}}>{mode === 'login' ? 'Sign in' : 'Create account'}</h1>
+
+        <form onSubmit={submit} className="card" style={{display:'grid', gap:12}}>
+          <label className="small">Email<br/>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} required />
+          </label>
+          <label className="small">Password<br/>
+            <input type="password" value={pw} onChange={e=>setPw(e.target.value)} required />
+          </label>
+          <button className="btn btn-primary" disabled={busy}>
+            {busy ? 'Please wait…' : (mode === 'login' ? 'Sign in' : 'Create account')}
+          </button>
+          {msg && <div className="small">{msg}</div>}
+        </form>
+
+        <div className="small">
+          {mode === 'login' ? (
+            <>Don’t have an account? <button className="link" onClick={()=>setMode('signup')}>Create account</button></>
+          ) : (
+            <>Already have an account? <button className="link" onClick={()=>setMode('login')}>Sign in</button></>
+          )}
         </div>
       </div>
     </main>
