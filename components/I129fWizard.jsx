@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
-import AiHelp from './AiHelp'; // keep this; stub below if needed
+import AiHelp from './AiHelp'; // keep or stub if not ready
 
 const STORAGE_KEY = 'liason:i129f';
+const PAID_KEY = 'liason:i129f:paid';
 
 const STEPS = [
   {
@@ -53,13 +54,34 @@ const STEPS = [
 export default function I129fWizard() {
   const [idx, setIdx] = useState(0);
   const [values, setValues] = useState({});
+  const [paid, setPaid] = useState(false);
 
+  // Load saved values + paid state
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) setValues(JSON.parse(raw));
     } catch {}
+
+    try {
+      const wasPaid = localStorage.getItem(PAID_KEY) === '1';
+      setPaid(wasPaid);
+    } catch {}
+
+    // Capture ?paid=1 from redirect, set flag, then clean URL
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('paid') === '1') {
+        localStorage.setItem(PAID_KEY, '1');
+        setPaid(true);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('paid');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch {}
   }, []);
+
+  // Persist form values
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(values)); } catch {}
   }, [values]);
@@ -96,7 +118,23 @@ export default function I129fWizard() {
     <div className="card" style={{display:'grid', gap:12}}>
       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <h3 style={{margin:0}}>{step.title}</h3>
-        <div className="small">{percent}%</div>
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          {paid && (
+            <span
+              className="small"
+              style={{
+                color:'#065f46',
+                background:'#ecfdf5',
+                border:'1px solid #a7f3d0',
+                padding:'2px 8px',
+                borderRadius:999
+              }}
+            >
+              ✅ Paid
+            </span>
+          )}
+          <div className="small">{percent}%</div>
+        </div>
       </div>
 
       <div style={{display:'grid', gap:12}}>
@@ -137,7 +175,11 @@ export default function I129fWizard() {
         <button className="btn" onClick={prev} disabled={idx===0}>Back</button>
         <button className="btn" onClick={next} disabled={idx===STEPS.length-1}>Next</button>
         <button className="btn" onClick={downloadDraft}>Download Draft PDF</button>
-        <a className="btn btn-primary" href="/checkout/us/i-129f">Continue to Checkout</a>
+
+        {/* Hide checkout after payment */}
+        {!paid && (
+          <a className="btn btn-primary" href="/checkout/us/i-129f">Continue to Checkout</a>
+        )}
       </div>
 
       <div className="small" style={{color:'#64748b'}}>
