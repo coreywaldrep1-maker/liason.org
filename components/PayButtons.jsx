@@ -1,94 +1,95 @@
-// components/PayButtons.jsx
 'use client';
+
 import { useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 
-export default function PayButtons({
-  amount = 500,
-  description = 'Liason Visa Prep Profile',
-  onSuccess,
-}) {
-  const ref = useRef(null);
+export default function PayButtons({ amount = 500, description = 'Liason Visa Prep Profile' }) {
+  const containerRef = useRef(null);
   const [sdkReady, setSdkReady] = useState(false);
+  const [error, setError] = useState('');
   const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
 
+  // Render PayPal buttons when SDK is ready
   useEffect(() => {
-    if (!sdkReady || !ref.current || !window.paypal) return;
+    if (!sdkReady) return;
+    if (!window.paypal || !containerRef.current) return;
+
+    // Clear any previous render
+    containerRef.current.innerHTML = '';
 
     try {
-      const btns = window.paypal.Buttons({
-        style: { layout: 'vertical' },
-        fundingSource: undefined, // allow PayPal + cards
-        createOrder: (_, actions) =>
-          actions.order.create({
+      window.paypal.Buttons({
+        style: { layout: 'vertical', shape: 'rect', height: 45 },
+        fundingSource: undefined, // let PayPal decide; we disabled Venmo/PayLater in the script URL
+
+        // Create order for $amount USD
+        createOrder: (_, actions) => {
+          return actions.order.create({
             purchase_units: [
               {
-                amount: {
-                  value: String(Number(amount).toFixed(2)),
-                  currency_code: 'USD',
-                },
-                description,
-              },
+                amount: { value: String(Number(amount).toFixed(2)), currency_code: 'USD' },
+                description
+              }
             ],
-          }),
-        onApprove: async (_, actions) => {
+            intent: 'CAPTURE'
+          });
+        },
+
+        // Capture payment, then set server paid flag and redirect back to the form
+        onApprove: async (_data, actions) => {
           try {
             await actions.order.capture();
-          } catch {}
-          if (onSuccess) onSuccess();
-          else window.location.href = '/flow/us/i-129f?paid=1';
+          } catch (e) {
+            console.error(e);
+            alert('Payment capture failed.');
+            return;
+          }
+
+          try {
+            // Mark the user as paid on the server
+            await fetch('/api/payments/mark-paid', { method: 'POST' });
+          } catch (e) {
+            console.error('Could not mark paid on server, proceeding anyway.');
+          }
+
+          // Redirect back to the flow with ?paid=1 (wizard will also check server)
+          window.location.href = '/flow/us/i-129f?paid=1';
         },
+
         onError: (err) => {
           console.error(err);
-          alert('Payment error. Please try again.');
-        },
-      });
-
-      btns.render(ref.current);
-      return () => {
-        try {
-          btns.close();
-        } catch {}
-      };
+          setError('PayPal failed to load. Please refresh and try again.');
+        }
+      }).render(containerRef.current);
     } catch (e) {
-      console.error('PayPal Buttons render error', e);
+      console.error(e);
+      setError('PayPal failed to load. Please refresh and try again.');
     }
-  }, [sdkReady, amount, description, onSuccess]);
+  }, [sdkReady, amount, description]);
 
   return (
-    <>
+    <div>
+      {/* Load PayPal SDK */}
       {!clientId && (
-        <div
-          className="card"
-          style={{
-            background: '#fffbe6',
-            borderColor: '#f59e0b',
-            color: '#92400e',
-            padding: 8,
-            marginBottom: 8,
-          }}
-        >
-          Missing <code>NEXT_PUBLIC_PAYPAL_CLIENT_ID</code> environment variable. Add it in
-          Vercel → Project → Settings → Environment Variables (Production), then redeploy.
+        <div className="card" style={{ marginBottom: 12, color: '#b91c1c' }}>
+          Missing NEXT_PUBLIC_PAYPAL_CLIENT_ID env var.
         </div>
       )}
 
       <Script
-        src={`https://www.paypal.com/sdk/js?client-id=${clientId || ''}&currency=USD&intent=capture&disable-funding=venmo,paylater`}
+        src={`https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId || '')}&currency=USD&intent=capture&disable-funding=venmo,paylater`}
         strategy="afterInteractive"
         onLoad={() => setSdkReady(true)}
-        onError={(e) => {
-          console.error('PayPal SDK failed to load', e);
-          alert('PayPal failed to load. Please refresh and try again.');
-        }}
+        onError={() => setError('PayPal SDK failed to load.')}
       />
 
-      <div ref={ref} />
-      {!sdkReady && (
-        <div className="small" style={{ color: '#64748b', marginTop: 8 }}>
-          Loading PayPal…
+      <div ref={containerRef} />
+
+      {error && (
+        <div className="small" style={{ marginTop: 8, color: '#b91c1c' }}>
+          {error}
         </div>
       )}
-    </>
+    </div>
   );
 }
