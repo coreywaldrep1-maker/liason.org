@@ -1,28 +1,22 @@
-// app/visas/canada/page.jsx
-import Hero from '../../../components/Hero';
-
-export const metadata = {
-  title: 'Canada Visas | Liason',
-  description: 'Explore Canada visa categories supported by Liason.',
-};
-
-export default function CanadaVisasPage() {
+export const metadata = { title: 'Canadian Visas | Liason' };
+export default function CanadaVisas() {
+  const visas = [
+    { href:'#', title:'Express Entry (PR)', blurb:'Skilled worker pathways to permanent residence.' },
+    { href:'#', title:'Study/Work permits', blurb:'Temporary work and education paths.' },
+    { href:'#', title:'Family sponsorship', blurb:'Reunite with spouse/partner or family.' },
+  ];
   return (
     <main className="section">
       <div className="container" style={{display:'grid', gap:16}}>
-        <Hero
-          size="sm"
-          image="/hero-canada.jpg" // optional — if missing, gradient fallback will show
-          title="Canada — Coming soon"
-          subtitle="We’re expanding coverage for common Canadian pathways (family, work, study) with guided checklists."
-          ctas={[
-            { href: '/', label: 'Back to Home' }
-          ]}
-        />
-
-        <div className="card" style={{display:'grid', gap:8}}>
-          <strong>What’s next?</strong>
-          <p className="small">Stay tuned—guided flows with document upload and section help are on the way.</p>
+        <h1 style={{margin:0}}>Canadian Visas</h1>
+        <p className="small">Choose the visa that best fits your situation.</p>
+        <div style={{display:'grid', gap:12}}>
+          {visas.map(v => (
+            <a key={v.title} href={v.href} className="card" style={{display:'grid', gap:4}}>
+              <strong>{v.title}</strong>
+              <span className="small" style={{color:'#64748b'}}>{v.blurb}</span>
+            </a>
+          ))}
         </div>
       </div>
     </main>
