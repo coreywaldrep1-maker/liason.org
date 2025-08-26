@@ -1,14 +1,28 @@
+'use client';
+import Link from 'next/link';
+
 export default function HeaderBasic() {
   return (
-    <header style={{background:'#fff',borderBottom:'1px solid #e2e8f0', position:'sticky', top:0, zIndex:50}}>
-      <div className="container" style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 0'}}>
-        <a href="/" style={{display:'flex',alignItems:'center',gap:10,textDecoration:'none',color:'inherit'}}>
-          <img src="/logo.svg" alt="Liason" height={32}/>
-        </a>
-        <nav style={{display:'flex',gap:18,fontSize:14}}>
-          <a href="/visas">Visas</a>
-          <a href="/policies">Policies</a>
-          <a href="/dpa">DPA</a>
+    <header className="site-header" style={{borderBottom:'1px solid #e2e8f0', background:'#fff'}}>
+      <div className="container" style={{display:'grid', gridTemplateColumns:'1fr auto 1fr', alignItems:'center', gap:12, padding:'12px 0'}}>
+        {/* Left: Login button */}
+        <div style={{justifySelf:'start'}}>
+          <Link href="/account" className="btn" style={{padding:'6px 10px'}}>Login</Link>
+        </div>
+
+        {/* Center: Logo → home */}
+        <div style={{justifySelf:'center'}}>
+          <Link href="/" className="logo" aria-label="Liason home" style={{fontWeight:700, fontSize:20, textDecoration:'none', color:'#0f172a'}}>
+            Liason
+          </Link>
+        </div>
+
+        {/* Right: your existing menu links (adjust as you like) */}
+        <nav style={{justifySelf:'end', display:'flex', gap:12}}>
+          <Link href="/" className="small">Home</Link>
+          <Link href="/visas" className="small">Visas</Link>
+          <Link href="/about" className="small">About</Link>
+          <Link href="/policies" className="small">Policies</Link>
         </nav>
       </div>
     </header>
