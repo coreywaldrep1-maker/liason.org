@@ -1,28 +1,21 @@
-// app/visas/europe/page.jsx
-import Hero from '../../../components/Hero';
-
-export const metadata = {
-  title: 'Europe Visas | Liason',
-  description: 'Explore European visa categories supported by Liason.',
-};
-
-export default function EuropeVisasPage() {
+export const metadata = { title: 'European Visas | Liason' };
+export default function EuropeVisas() {
+  const visas = [
+    { href:'#', title:'Schengen short-stay', blurb:'Tourism and short business trips.' },
+    { href:'#', title:'National long-stay (D)', blurb:'Study, work, family reunification options.' },
+  ];
   return (
     <main className="section">
       <div className="container" style={{display:'grid', gap:16}}>
-        <Hero
-          size="sm"
-          image="/hero-europe.jpg" // optional — if missing, gradient fallback will show
-          title="Europe — Coming soon"
-          subtitle="Popular European routes with plain-language guidance and upload help."
-          ctas={[
-            { href: '/', label: 'Back to Home' }
-          ]}
-        />
-
-        <div className="card" style={{display:'grid', gap:8}}>
-          <strong>What’s next?</strong>
-          <p className="small">More categories with step-by-step wizards are in progress.</p>
+        <h1 style={{margin:0}}>European Visas</h1>
+        <p className="small">Choose the visa that best fits your situation.</p>
+        <div style={{display:'grid', gap:12}}>
+          {visas.map(v => (
+            <a key={v.title} href={v.href} className="card" style={{display:'grid', gap:4}}>
+              <strong>{v.title}</strong>
+              <span className="small" style={{color:'#64748b'}}>{v.blurb}</span>
+            </a>
+          ))}
         </div>
       </div>
     </main>
