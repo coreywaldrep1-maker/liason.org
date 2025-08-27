@@ -1,54 +1,19 @@
-'use client';
-import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 
 export default function HomeMenu() {
-  const [open, setOpen] = useState(false);
-  const panelRef = useRef(null);
-
-  // Close when clicking outside the panel
-  useEffect(() => {
-    function onDocClick(e) {
-      if (!panelRef.current) return;
-      if (!panelRef.current.contains(e.target)) setOpen(false);
-    }
-    if (open) document.addEventListener('click', onDocClick);
-    return () => document.removeEventListener('click', onDocClick);
-  }, [open]);
-
   return (
-    <div
-      ref={panelRef}
-      style={{
-        position: 'fixed',
-        top: 72,          // ↓ sits below the header
-        left: 16,         // ← left-hand side
-        zIndex: 50
-      }}
+    <nav
+      aria-label="Home menu"
+      className="container"
+      style={{display:'flex', justifyContent:'center', gap:12, marginTop:16}}
     >
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen(v => !v)}
-        className="btn btn-primary"
+      <Link
+        href="/visas"
+        className="small"
+        style={{padding:'8px 12px', border:'1px solid #e2e8f0', borderRadius:8}}
       >
-        Menu
-      </button>
-
-      {open && (
-        <nav
-          role="menu"
-          aria-label="Quick links"
-          className="card"
-          style={{ marginTop: 8, width: 220, display: 'grid', gap: 8 }}
-        >
-          <a href="/" className="btn" role="menuitem">Home</a>
-          <a href="/visas/us" className="btn" role="menuitem">US Visas</a>
-          <a href="/visas/canada" className="btn" role="menuitem">Canada Visas</a>
-          <a href="/visas/europe" className="btn" role="menuitem">Europe Visas</a>
-          <a href="/policies" className="btn" role="menuitem">Policies</a>
-        </nav>
-      )}
-    </div>
+        Visas
+      </Link>
+    </nav>
   );
 }
