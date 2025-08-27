@@ -6,7 +6,7 @@ export default function HeaderBasic() {
   return (
     <header className="site-header" style={{borderBottom:'1px solid #e2e8f0', background:'#fff'}}>
       <div className="container" style={{display:'grid', gridTemplateColumns:'1fr auto 1fr', alignItems:'center', gap:12, padding:'12px 0'}}>
-        {/* Left: Login */}
+        {/* Left: Login + Language */}
         <div style={{justifySelf:'start', display:'flex', alignItems:'center', gap:10}}>
           <Link href="/account" className="btn" style={{padding:'6px 10px'}}>Login</Link>
           <LanguageSwitcher />
@@ -19,13 +19,17 @@ export default function HeaderBasic() {
           </Link>
         </div>
 
-        {/* Right: Nav + user icon */}
+        {/* Right: Nav */}
         <nav style={{justifySelf:'end', display:'flex', alignItems:'center', gap:14}}>
           <Link href="/" className="small">Home</Link>
-          <Link href="/visas" className="small">Visas</Link>
+          <Link
+            href="/visas"
+            className="small"
+            style={{padding:'6px 10px', border:'1px solid #e2e8f0', borderRadius:8}}
+          >
+            Visas
+          </Link>
           <Link href="/about" className="small">About</Link>
-
-          {/* Simple user icon linking to /account */}
           <Link href="/account" aria-label="Account" style={{display:'inline-flex', alignItems:'center'}}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <circle cx="12" cy="8" r="4" stroke="#0f172a" strokeWidth="1.8"/>
