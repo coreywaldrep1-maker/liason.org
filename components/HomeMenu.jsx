@@ -43,9 +43,9 @@ export default function HomeMenu() {
           style={{ marginTop: 8, width: 220, display: 'grid', gap: 8 }}
         >
           <a href="/" className="btn" role="menuitem">Home</a>
-          <a href="/visas/us" className="btn" role="menuitem">US Visas</a>
-          <a href="/visas/canada" className="btn" role="menuitem">Canada Visas</a>
-          <a href="/visas/europe" className="btn" role="menuitem">Europe Visas</a>
+          <a href="/visas/United States" className="btn" role="menuitem">US Visas</a>
+          <a href="/visas/Canadian" className="btn" role="menuitem">Canada Visas</a>
+          <a href="/visas/European" className="btn" role="menuitem">Europe Visas</a>
           <a href="/policies" className="btn" role="menuitem">Policies</a>
         </nav>
       )}
