@@ -17,7 +17,13 @@ export default function SiteHeader() {
         </div>
         <nav style={{justifySelf:'end', display:'flex', alignItems:'center', gap:14}}>
           <Link href="/" className="small">Home</Link>
-          <Link href="/visas" className="small">Visas</Link>
+          <Link
+            href="/visas"
+            className="small"
+            style={{padding:'6px 10px', border:'1px solid #e2e8f0', borderRadius:8}}
+          >
+            Visas
+          </Link>
           <Link href="/about" className="small">About</Link>
           <Link href="/account" aria-label="Account" style={{display:'inline-flex', alignItems:'center'}}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
