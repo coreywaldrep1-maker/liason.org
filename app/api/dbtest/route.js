@@ -1,22 +1,22 @@
-{
-  "name": "liason",
-  "version": "1.0.0",
-  "private": true,
-  "engines": {
-    "node": ">=18.17.0"
-  },
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
-  },
-  "dependencies": {
-    "@neondatabase/serverless": "^0.9.3",
-    "@paypal/paypal-js": "^9.0.0",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
-    "next": "14.2.5",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+// app/api/dbtest/route.js
+import { neon } from '@neondatabase/serverless';
+
+export async function GET() {
+  try {
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      return new Response(
+        JSON.stringify({ ok: false, error: 'DATABASE_URL missing' }),
+        { status: 500 }
+      );
+    }
+    const sql = neon(url);
+    const rows = await sql`select now() as now`;
+    return Response.json({ ok: true, now: rows[0].now });
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ ok: false, error: String(err) }),
+      { status: 500 }
+    );
   }
 }
