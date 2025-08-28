@@ -7,7 +7,6 @@ export default function MenuDropdown() {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
-  // close on outside click
   useEffect(() => {
     function onDocClick(e) {
       if (!ref.current) return;
@@ -17,7 +16,6 @@ export default function MenuDropdown() {
     return () => document.removeEventListener('click', onDocClick);
   }, []);
 
-  // close on ESC
   useEffect(() => {
     function onEsc(e) {
       if (e.key === 'Escape') setOpen(false);
@@ -59,9 +57,10 @@ export default function MenuDropdown() {
             zIndex: 50
           }}
         >
+          {/* ORDER: Home, Visas, About, Policies */}
           <MenuItem href="/" label="Home" onPick={() => setOpen(false)} />
-          <MenuItem href="/about" label="About" onPick={() => setOpen(false)} />
           <MenuItem href="/visas" label="Visas" onPick={() => setOpen(false)} />
+          <MenuItem href="/about" label="About" onPick={() => setOpen(false)} />
           <MenuItem href="/policies" label="Policies" onPick={() => setOpen(false)} />
         </div>
       )}
