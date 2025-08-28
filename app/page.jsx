@@ -1,20 +1,22 @@
-import Hero from '../components/Hero';
+export const metadata = { title: 'Liason — Welcome' };
 
-export const metadata = { title: 'Liason — Welcome', description: 'Streamlining the visa process to connect you to the world.' };
-
-export default function Home() {
+export default function HomePage() {
   return (
     <main className="section">
       <div className="container" style={{display:'grid', gap:16}}>
-        <Hero
-          image="/hero.jpg"
-          title="Welcome to Liason"
-          subtitle="Our mission is streamlining the visa process to connect you to the world. Start with the visa that best fits your situation."
-          ctas={[{ href:'/visas', label:'Explore visas', primary:true }]}
-        />
-        <div className="card">
-          <p>Liason began after experiencing the stress of filing a fiancé(e) visa from afar. We built a guided tool so others don’t have to go through it alone.</p>
-        </div>
+        {/* Hero / intro */}
+        <section className="card" style={{padding:20, display:'grid', gap:10}}>
+          <h1 style={{margin:0}}>Making memories. Bringing people together.</h1>
+          <p className="small">
+            Liason streamlines complex visa prep with clear guidance, secure document handling, and
+            helpful tools—so you can focus on the people who matter.
+          </p>
+          <div>
+            <a href="/visas" className="btn btn-primary">Explore visas</a>
+          </div>
+        </section>
+
+        {/* Add any other home sections here */}
       </div>
     </main>
   );
