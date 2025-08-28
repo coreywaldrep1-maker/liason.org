@@ -1,12 +1,12 @@
-import { NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+// app/api/db-test/route.js
+import { neon } from '@neondatabase/serverless';
 
 export async function GET() {
   try {
-    const r = await query('select now()');
-    return NextResponse.json({ ok:true, now: r.rows[0].now });
+    const sql = neon(process.env.DATABASE_URL);
+    const rows = await sql`select now() as now`;
+    return Response.json({ ok: true, now: rows[0].now });
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ ok:false, error: String(e) }, { status: 500 });
+    return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 500 });
   }
 }
