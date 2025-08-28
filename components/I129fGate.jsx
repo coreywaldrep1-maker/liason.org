@@ -1,41 +1,47 @@
 // components/I129fGate.jsx
-'use client';
+import { cookies } from 'next/headers';
+import { jwtVerify } from 'jose';
+import { sql } from '@/lib/db';
 
-import { useEffect, useState } from 'react';
+const SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'dev');
 
-export default function I129fGate({ PaidView, PrePayView }) {
-  const [state, setState] = useState({ loading: true, loggedIn: false, paid: false });
-
-  useEffect(() => {
-    fetch('/api/profile/status?product=i129f')
-      .then(r => r.json())
-      .then(data => setState({ loading: false, loggedIn: data.loggedIn, paid: data.paid }))
-      .catch(() => setState({ loading: false, loggedIn: false, paid: false }));
-  }, []);
-
-  if (state.loading) {
-    return (
-      <div className="card">
-        <p className="small">Checking your status…</p>
-      </div>
-    );
+async function getUserIdFromCookie() {
+  const token = cookies().get('liason_jwt')?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, SECRET);
+    return payload.sub || null;
+  } catch {
+    return null;
   }
+}
 
-  if (!state.loggedIn) {
+/**
+ * Server Component: decide which view to show
+ * Props:
+ *  - prepay: ReactNode (what to show before payment)
+ *  - paid: ReactNode (what to show after payment)
+ */
+export default async function I129fGate({ prepay, paid }) {
+  const userId = await getUserIdFromCookie();
+
+  if (!userId) {
     return (
       <div className="card">
-        <h3 style={{marginTop:0}}>Please sign in</h3>
+        <h3 style={{ marginTop: 0 }}>Please sign in</h3>
         <p className="small">Create an account or sign in to start your I-129F profile.</p>
         <a className="btn btn-primary" href="/account">Sign in / Create account</a>
       </div>
     );
   }
 
-  if (!state.paid) {
-    // Show the “How it works • 3 steps” and a button to checkout
-    return <PrePayView />;
-  }
+  const rows = await sql`
+    SELECT paid
+    FROM user_profiles
+    WHERE user_id = ${userId} AND product_code = ${'i129f'}
+    LIMIT 1
+  `;
+  const isPaid = rows[0]?.paid === true;
 
-  // Paid — render the tool (AI, Wizard, Download)
-  return <PaidView />;
+  return isPaid ? paid : prepay;
 }
