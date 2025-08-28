@@ -1,12 +1,22 @@
-// app/api/db-test/route.js
-import { neon } from '@neondatabase/serverless';
-
-export async function GET() {
-  try {
-    const sql = neon(process.env.DATABASE_URL);
-    const rows = await sql`select now() as now`;
-    return Response.json({ ok: true, now: rows[0].now });
-  } catch (e) {
-    return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 500 });
+{
+  "name": "liason",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.9.3",
+    "@paypal/paypal-js": "^9.0.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "next": "14.2.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   }
 }
