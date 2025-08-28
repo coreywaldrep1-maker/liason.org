@@ -1,36 +1,47 @@
+// app/api/payments/mark-paid/route.js
 import { NextResponse } from 'next/server';
-import { getPool } from '@/lib/db';
+import { cookies } from 'next/headers';
+import { sql } from '@/lib/db';
 import { jwtVerify } from 'jose';
 
-const enc = new TextEncoder();
+async function getUserIdFromCookie() {
+  const token = cookies().get('token')?.value;
+  if (!token) return null;
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET is missing');
+  const key = new TextEncoder().encode(secret);
+  const { payload } = await jwtVerify(token, key);
+  return payload?.uid || null;
+}
 
-async function getUserId() {
+export async function POST(req) {
   try {
-    const cookie = require('next/headers').cookies().get('liason_token')?.value;
-    if (!cookie) return null;
-    const { payload } = await jwtVerify(cookie, enc.encode(process.env.JWT_SECRET));
-    return payload.sub;
-  } catch { return null; }
-}
+    const uid = await getUserIdFromCookie();
+    if (!uid) return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401 });
 
-export async function POST() {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { orderId, product = 'i129f_profile', amount = 500, status = 'captured' } = await req.json();
 
-  const pool = getPool();
-  await pool.query(
-    `insert into payments (user_id, paid, updated_at) values ($1, true, now())
-     on conflict (user_id) do update set paid = true, updated_at = now()`,
-    [userId]
-  );
-  return NextResponse.json({ ok: true });
-}
+    // (Optional safety) create table if not exists
+    await sql`
+      CREATE TABLE IF NOT EXISTS payments (
+        id bigserial PRIMARY KEY,
+        user_id bigint NOT NULL,
+        product text NOT NULL,
+        amount_cents integer NOT NULL,
+        status text NOT NULL,
+        gateway_order_id text,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )
+    `;
 
-export async function GET() {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    await sql`
+      INSERT INTO payments (user_id, product, amount_cents, status, gateway_order_id)
+      VALUES (${uid}, ${product}, ${Math.round(amount * 100)}, ${status}, ${orderId})
+    `;
 
-  const pool = getPool();
-  const { rows } = await pool.query(`select paid from payments where user_id = $1`, [userId]);
-  return NextResponse.json({ paid: rows[0]?.paid || false });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error('MARK_PAID_ERROR', err);
+    return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status: 500 });
+  }
 }
