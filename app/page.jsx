@@ -1,5 +1,3 @@
-import HomeMenu from '@/components/HomeMenu';
-
 import Hero from '../components/Hero';
 
 export const metadata = { title: 'Liason — Welcome', description: 'Streamlining the visa process to connect you to the world.' };
