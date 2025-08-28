@@ -1,39 +1,49 @@
+// app/api/auth/login/route.js
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { query } from '@/lib/db';
+import { sql } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { SignJWT } from 'jose';
 
 export async function POST(req) {
   try {
     const { email, password } = await req.json();
-    if (!email || !password) return NextResponse.json({ error:'Email and password required' }, { status: 400 });
+    if (!email || !password) {
+      return NextResponse.json({ ok: false, error: 'Email and password required' }, { status: 400 });
+    }
 
-    const r = await query('select id, password_hash from users where email=$1', [email]);
-    if (!r.rowCount) return NextResponse.json({ error:'Invalid credentials' }, { status: 401 });
+    const normEmail = String(email).trim().toLowerCase();
+    const rows = await sql`SELECT id, email, password_hash FROM users WHERE email = ${normEmail}`;
+    if (!rows.length) {
+      return NextResponse.json({ ok: false, error: 'Invalid email or password' }, { status: 401 });
+    }
 
-    const user = r.rows[0];
+    const user = rows[0];
     const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) return NextResponse.json({ error:'Invalid credentials' }, { status: 401 });
+    if (!ok) {
+      return NextResponse.json({ ok: false, error: 'Invalid email or password' }, { status: 401 });
+    }
 
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'dev-secret');
-    const token = await new SignJWT({ sub: user.id, email })
+    const secret = process.env.JWT_SECRET;
+    if (!secret) throw new Error('JWT_SECRET is missing');
+    const key = new TextEncoder().encode(secret);
+
+    const token = await new SignJWT({ uid: user.id, email: user.email })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
-      .setExpirationTime('7d')
-      .sign(secret);
+      .setExpirationTime('30d')
+      .sign(key);
 
-    cookies().set('liason_token', token, {
+    const res = NextResponse.json({ ok: true, user: { id: user.id, email: user.email } });
+    res.cookies.set('token', token, {
       httpOnly: true,
-      sameSite: 'lax',
       secure: true,
+      sameSite: 'lax',
       path: '/',
-      maxAge: 60*60*24*7
+      maxAge: 60 * 60 * 24 * 30,
     });
-
-    return NextResponse.json({ ok:true });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error:'Server error' }, { status: 500 });
+    return res;
+  } catch (err) {
+    console.error('LOGIN_ERROR', err);
+    return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status: 500 });
   }
 }
