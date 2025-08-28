@@ -1,25 +1,24 @@
-export const runtime = 'nodejs';
-
-import pkg from 'pg';
-const { Pool } = pkg;
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
+import { neon } from '@neondatabase/serverless';
+const sql = neon(process.env.DATABASE_URL);
 
 export async function POST() {
   try {
-    await pool.query(`
-      create table if not exists heartbeat (
-        id bigserial primary key,
-        ts timestamptz not null default now()
-      )
-    `);
-    const { rows } = await pool.query(
-      'insert into heartbeat default values returning id, ts'
-    );
-    return Response.json({ ok: true, inserted: rows[0] });
+    await sql`CREATE TABLE IF NOT EXISTS test_writes (
+      id bigserial PRIMARY KEY,
+      note text,
+      created_at timestamptz DEFAULT now()
+    );`;
+    const { rows } = await sql`
+      INSERT INTO test_writes (note) 
+      VALUES ('hello from vercel') 
+      RETURNING id, note, created_at
+    `;
+    return Response.json({ ok: true, row: rows[0] });
   } catch (err) {
-    return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 500 });
+    console.error(err);
+    return new Response(
+      JSON.stringify({ ok: false, error: String(err) }),
+      { status: 500, headers: { 'content-type': 'application/json' } }
+    );
   }
 }
