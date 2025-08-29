@@ -1,37 +1,31 @@
-// app/api/auth/login/route.js
 import { NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
-import bcrypt from 'bcryptjs';
+import { getPool } from '@/lib/db';
 import { SignJWT } from 'jose';
+
+const enc = new TextEncoder();
 
 export async function POST(req) {
   try {
     const { email, password } = await req.json();
     if (!email || !password) {
-      return NextResponse.json({ ok: false, error: 'Email and password required' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: 'Missing email/password' }, { status: 400 });
     }
 
-    const normEmail = String(email).trim().toLowerCase();
-    const rows = await sql`SELECT id, email, password_hash FROM users WHERE email = ${normEmail}`;
-    if (!rows.length) {
-      return NextResponse.json({ ok: false, error: 'Invalid email or password' }, { status: 401 });
-    }
-
+    const pool = getPool();
+    const { rows } = await pool.query(
+      'SELECT id, email FROM users WHERE email=$1 AND password_hash = crypt($2, password_hash)',
+      [email, password]
+    );
     const user = rows[0];
-    const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) {
-      return NextResponse.json({ ok: false, error: 'Invalid email or password' }, { status: 401 });
+    if (!user) {
+      return NextResponse.json({ ok: false, error: 'Invalid credentials' }, { status: 401 });
     }
 
-    const secret = process.env.JWT_SECRET;
-    if (!secret) throw new Error('JWT_SECRET is missing');
-    const key = new TextEncoder().encode(secret);
-
-    const token = await new SignJWT({ uid: user.id, email: user.email })
+    const token = await new SignJWT({ sub: String(user.id), email: user.email })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
-      .setExpirationTime('30d')
-      .sign(key);
+      .setExpirationTime('7d')
+      .sign(enc.encode(process.env.JWT_SECRET));
 
     const res = NextResponse.json({ ok: true, user: { id: user.id, email: user.email } });
     res.cookies.set('token', token, {
@@ -39,11 +33,11 @@ export async function POST(req) {
       secure: true,
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24 * 30,
+      maxAge: 60 * 60 * 24 * 7,
+      domain: process.env.COOKIE_DOMAIN || undefined, // <- important
     });
     return res;
-  } catch (err) {
-    console.error('LOGIN_ERROR', err);
-    return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: 'Server error' }, { status: 500 });
   }
 }
