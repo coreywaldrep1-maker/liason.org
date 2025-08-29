@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
-import Hero from '../../../components/Hero';
-import I129fWizard from '../../../components/I129fWizard';
-import AiHelp from '../../../components/AiHelp';
+import Hero from '@/components/Hero';
+import I129fWizard from '@/components/I129fWizard';
+import AiHelp from '@/components/AiHelp';
 
 export const metadata = {
   title: 'Start US I-129F | Liason',
