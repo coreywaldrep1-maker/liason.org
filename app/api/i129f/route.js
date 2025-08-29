@@ -1,48 +1,65 @@
-// app/api/i129f/save/route.js
+export const runtime = 'nodejs';
+
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { sql } from '@/lib/db';
-import { jwtVerify } from 'jose';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
-async function getUserIdFromCookie() {
-  const token = cookies().get('token')?.value;
-  if (!token) return null;
-  const secret = process.env.JWT_SECRET;
-  if (!secret) throw new Error('JWT_SECRET is missing');
-  const key = new TextEncoder().encode(secret);
-  const { payload } = await jwtVerify(token, key);
-  return payload?.uid || null;
-}
-
-export async function POST(req) {
+export async function POST(request) {
   try {
-    const uid = await getUserIdFromCookie();
-    if (!uid) return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401 });
+    const { answers = {} } = await request.json();
 
-    const body = await req.json();
-    const answers = body?.answers || {};
+    // Create a simple multi-page PDF summary
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const titleFont = await pdf.embedFont(StandardFonts.HelveticaBold);
 
-    // (Optional safety) create table if not exists
-    await sql`
-      CREATE TABLE IF NOT EXISTS i129f_answers (
-        user_id bigint PRIMARY KEY,
-        answers jsonb NOT NULL DEFAULT '{}'::jsonb,
-        updated_at timestamptz NOT NULL DEFAULT now()
-      )
-    `;
+    const margin = 50;
+    const lineHeight = 16;
 
-    // Upsert
-    const rows = await sql`
-      INSERT INTO i129f_answers (user_id, answers, updated_at)
-      VALUES (${uid}, ${answers}, now())
-      ON CONFLICT (user_id)
-      DO UPDATE SET answers = ${answers}, updated_at = now()
-      RETURNING user_id, updated_at
-    `;
+    // helper to add a page with header
+    const addPage = (pageTitle) => {
+      const page = pdf.addPage([612, 792]); // Letter
+      const { width, height } = page.getSize();
+      page.drawText('Form I-129F (Draft Summary)', {
+        x: margin, y: height - margin,
+        size: 14, font: titleFont, color: rgb(0,0,0),
+      });
+      page.drawText(pageTitle, {
+        x: margin, y: height - margin - 22,
+        size: 12, font, color: rgb(0.1,0.1,0.1),
+      });
+      return page;
+    };
 
-    return NextResponse.json({ ok: true, saved: rows[0] });
-  } catch (err) {
-    console.error('I129F_SAVE_ERROR', err);
-    return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status: 500 });
+    let page = addPage('Your provided answers');
+    let y = 792 - margin - 50;
+
+    const entries = Object.entries(answers);
+    if (entries.length === 0) {
+      page.drawText('No data provided.', { x: margin, y, size: 12, font });
+    } else {
+      for (const [k, v] of entries) {
+        const text = `${k}: ${Array.isArray(v) ? v.join(', ') : (v ?? '')}`;
+        // wrap to new page if needed
+        if (y < margin + 40) {
+          page = addPage('Continued');
+          y = 792 - margin - 50;
+        }
+        page.drawText(text, { x: margin, y, size: 12, font, color: rgb(0,0,0) });
+        y -= lineHeight;
+      }
+    }
+
+    const bytes = await pdf.save();
+    return new Response(bytes, {
+      status: 200,
+      headers: {
+        'content-type': 'application/pdf',
+        'content-disposition': 'attachment; filename="I-129F-draft.pdf"',
+        'cache-control': 'no-store',
+      },
+    });
+  } catch (e) {
+    console.error('PDF error', e);
+    return NextResponse.json({ error: 'PDF generation failed' }, { status: 500 });
   }
 }
