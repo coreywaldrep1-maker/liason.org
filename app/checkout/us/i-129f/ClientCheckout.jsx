@@ -10,8 +10,11 @@ export default function ClientCheckout() {
   const unlock = async () => {
     try {
       setBusy(true);
-      // Mark "paid" only on this browser (test mode)
+      // Mark "paid" on this browser (localStorage)
       localStorage.setItem('i129f_paid', 'true');
+      // And also set a cookie the server can see on navigation
+      document.cookie = "i129f_paid=1; path=/; max-age=2592000; samesite=lax";
+
       // Go straight to the tool
       router.push('/flow/us/i-129f');
     } catch (e) {
