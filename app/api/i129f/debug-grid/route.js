@@ -1,60 +1,44 @@
 // app/api/i129f/debug-grid/route.js
+export const runtime = 'nodejs';            // ensure Node runtime (we use fs)
+export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { headers } from 'next/headers';
+import { PDFDocument, rgb } from 'pdf-lib';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-export const dynamic = 'force-dynamic';
+async function loadPdfBytes() {
+  // 1) Try reading from the filesystem (public/forms/i-129f.pdf)
+  const fsPath = path.join(process.cwd(), 'public', 'forms', 'i-129f.pdf');
+  try {
+    return await fs.readFile(fsPath);
+  } catch (_) {
+    // 2) Fallback: fetch from the same deployed domain
+    const host = headers().get('host') || 'www.liason.org';
+    const proto = host.includes('localhost') ? 'http' : 'https';
+    const url = `${proto}://${host}/forms/i-129f.pdf`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Fetch ${url} failed with ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+}
 
 export async function GET() {
   try {
-    const pdfPath = path.join(process.cwd(), 'public', 'forms', 'i-129f.pdf');
-    const bytes = await fs.readFile(pdfPath);
-
+    const bytes = await loadPdfBytes();
     const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const pages = pdfDoc.getPages();
 
-    for (const page of pdfDoc.getPages()) {
+    // draw a light grid using thin rectangles (avoids drawLine quirks)
+    for (const page of pages) {
       const { width, height } = page.getSize();
 
-      // vertical “lines” as thin rectangles
       for (let x = 0; x <= width; x += 50) {
-        page.drawRectangle({
-          x,
-          y: 0,
-          width: 0.5,
-          height,
-          color: rgb(0.88, 0.88, 0.88),
-        });
-        if (x % 100 === 0) {
-          page.drawText(String(x), {
-            x: x + 2,
-            y: 5,
-            size: 8,
-            font,
-            color: rgb(0.4, 0.4, 0.4),
-          });
-        }
+        page.drawRectangle({ x, y: 0, width: 0.5, height, color: rgb(0.88,0.88,0.88) });
       }
-
-      // horizontal “lines” as thin rectangles
       for (let y = 0; y <= height; y += 50) {
-        page.drawRectangle({
-          x: 0,
-          y,
-          width,
-          height: 0.5,
-          color: rgb(0.88, 0.88, 0.88),
-        });
-        if (y % 100 === 0) {
-          page.drawText(String(y), {
-            x: 5,
-            y: y + 2,
-            size: 8,
-            font,
-            color: rgb(0.4, 0.4, 0.4),
-          });
-        }
+        page.drawRectangle({ x: 0, y, width, height: 0.5, color: rgb(0.88,0.88,0.88) });
       }
     }
 
@@ -63,12 +47,12 @@ export async function GET() {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="i129f-grid.pdf"',
+        'Content-Disposition': 'inline; filename="i129f-grid.pdf"',
       },
     });
   } catch (err) {
     return NextResponse.json(
-      { ok: false, error: err?.message || String(err) },
+      { ok: false, where: 'debug-grid', error: err?.message || String(err) },
       { status: 500 }
     );
   }
