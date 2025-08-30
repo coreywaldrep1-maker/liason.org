@@ -1,23 +1,29 @@
-// app/api/i129f/probe/route.js
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
 import { NextResponse } from 'next/server';
-import { PDFDocument } from 'pdf-lib';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { PDFDocument } from 'pdf-lib';
+
+const FORM_PATH = path.join(process.cwd(), 'public', 'forms', 'i-129f.pdf');
 
 export async function GET() {
   try {
-    const fsPath = path.join(process.cwd(), 'public', 'forms', 'i-129f.pdf');
-    const bytes = await fs.readFile(fsPath);
-    const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-    return NextResponse.json({ ok: true, pages: pdfDoc.getPageCount() });
-  } catch (e) {
+    // Ensure file exists
+    await fs.access(FORM_PATH);
+
+    const bytes = await fs.readFile(FORM_PATH);
+    // ignoreEncryption helps when the source file had security flags
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const pages = pdf.getPages().length;
+
+    return NextResponse.json({
+      ok: true,
+      file: 'i-129f.pdf',
+      pages,
+    });
+  } catch (err) {
     return NextResponse.json(
-      { ok: false, message: e?.message || String(e) },
+      { ok: false, error: String(err?.message || err) },
       { status: 500 }
     );
   }
 }
-
