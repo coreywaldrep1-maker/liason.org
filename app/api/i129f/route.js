@@ -1,61 +1,59 @@
 // app/api/i129f/route.js
 import { NextResponse } from 'next/server';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { promises as fs } from 'fs';
 import path from 'path';
-
-// Example mapping: LEFT = exact PDF field name, RIGHT = your wizard keys
-// Replace these with the real field names you saw from /api/i129f/fields
-const MAPPING = {
-  // 'TopmostSubform[0].Page1[0].PtName_First[0]': 'petitioner_first_name',
-  // 'TopmostSubform[0].Page1[0].PtName_Last[0]': 'petitioner_last_name',
-};
+import { COORDS } from '@/lib/i129fCoords';
 
 export const dynamic = 'force-dynamic';
 
+// Trim text so it doesn't overflow the box width (very simple fit)
+function fitToWidth(font, size, text, maxWidth) {
+  if (!maxWidth) return text;
+  let s = String(text);
+  while (s.length > 0 && font.widthOfTextAtSize(s, size) > maxWidth) {
+    s = s.slice(0, -1);
+  }
+  return s;
+}
+
 export async function POST(request) {
   try {
-    const body = await request.json(); // { values: {...} }
+    const body = await request.json(); // expecting { values: {...} }
     const values = body?.values || {};
 
     const pdfPath = path.join(process.cwd(), 'public', 'forms', 'i-129f.pdf');
     const bytes = await fs.readFile(pdfPath);
 
-    // Allow loading encrypted PDFs
+    // Allow loading encrypted PDFs (many USCIS PDFs are flagged)
     const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-    // If the PDF is XFA-based, pdf-lib cannot fill fields. We'll detect no fields.
-    const form = pdfDoc.getForm();
-    const fields = form.getFields();
-    if (fields.length === 0) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            'No fillable AcroForm fields found. The PDF is likely XFA-based. Use an AcroForm version of the I-129F or convert it.',
-        },
-        { status: 400 }
-      );
-    }
-
-    for (const [pdfFieldName, key] of Object.entries(MAPPING)) {
+    // Draw values at coordinates
+    for (const row of COORDS) {
+      const { key, page, x, y, size = 10, maxWidth, asCheckbox } = row;
       const val = values[key];
-      if (val == null) continue;
-      const field = form.getFieldMaybe(pdfFieldName);
-      if (!field) continue;
+      if (val == null || val === '') continue;
 
-      // pdf-lib sets text via field.setText for text fields.
-      try {
-        // setText works for text fields; if other field type, catch and ignore for now
-        field.setText(String(val));
-      } catch {
-        // no-op for non-text fields in this simple example
+      const pages = pdfDoc.getPages();
+      if (page < 0 || page >= pages.length) continue;
+      const p = pages[page];
+
+      if (asCheckbox) {
+        // Draw an "X" for checked
+        const text = (val === true || String(val).toLowerCase() === 'true') ? 'X' : '';
+        if (text) {
+          p.drawText(text, { x, y, size, font, color: rgb(0, 0, 0) });
+        }
+      } else {
+        const text = fitToWidth(font, size, String(val), maxWidth);
+        if (text) {
+          p.drawText(text, { x, y, size, font, color: rgb(0, 0, 0) });
+        }
       }
     }
 
-    // Flatten if you want the fields to be non-editable:
-    // form.flatten();
-
+    // Optional: flatten appearance (not strictly needed since we're drawing, not fields)
     const out = await pdfDoc.save();
     return new NextResponse(Buffer.from(out), {
       status: 200,
