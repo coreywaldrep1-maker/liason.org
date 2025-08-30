@@ -1,65 +1,73 @@
-export const runtime = 'nodejs';
-
+// app/api/i129f/route.js
 import { NextResponse } from 'next/server';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
+import { promises as fs } from 'fs';
+import path from 'path';
+
+// Example mapping: LEFT = exact PDF field name, RIGHT = your wizard keys
+// Replace these with the real field names you saw from /api/i129f/fields
+const MAPPING = {
+  // 'TopmostSubform[0].Page1[0].PtName_First[0]': 'petitioner_first_name',
+  // 'TopmostSubform[0].Page1[0].PtName_Last[0]': 'petitioner_last_name',
+};
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request) {
   try {
-    const { answers = {} } = await request.json();
+    const body = await request.json(); // { values: {...} }
+    const values = body?.values || {};
 
-    // Create a simple multi-page PDF summary
-    const pdf = await PDFDocument.create();
-    const font = await pdf.embedFont(StandardFonts.Helvetica);
-    const titleFont = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const pdfPath = path.join(process.cwd(), 'public', 'forms', 'i-129f.pdf');
+    const bytes = await fs.readFile(pdfPath);
 
-    const margin = 50;
-    const lineHeight = 16;
+    // Allow loading encrypted PDFs
+    const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
 
-    // helper to add a page with header
-    const addPage = (pageTitle) => {
-      const page = pdf.addPage([612, 792]); // Letter
-      const { width, height } = page.getSize();
-      page.drawText('Form I-129F (Draft Summary)', {
-        x: margin, y: height - margin,
-        size: 14, font: titleFont, color: rgb(0,0,0),
-      });
-      page.drawText(pageTitle, {
-        x: margin, y: height - margin - 22,
-        size: 12, font, color: rgb(0.1,0.1,0.1),
-      });
-      return page;
-    };
+    // If the PDF is XFA-based, pdf-lib cannot fill fields. We'll detect no fields.
+    const form = pdfDoc.getForm();
+    const fields = form.getFields();
+    if (fields.length === 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            'No fillable AcroForm fields found. The PDF is likely XFA-based. Use an AcroForm version of the I-129F or convert it.',
+        },
+        { status: 400 }
+      );
+    }
 
-    let page = addPage('Your provided answers');
-    let y = 792 - margin - 50;
+    for (const [pdfFieldName, key] of Object.entries(MAPPING)) {
+      const val = values[key];
+      if (val == null) continue;
+      const field = form.getFieldMaybe(pdfFieldName);
+      if (!field) continue;
 
-    const entries = Object.entries(answers);
-    if (entries.length === 0) {
-      page.drawText('No data provided.', { x: margin, y, size: 12, font });
-    } else {
-      for (const [k, v] of entries) {
-        const text = `${k}: ${Array.isArray(v) ? v.join(', ') : (v ?? '')}`;
-        // wrap to new page if needed
-        if (y < margin + 40) {
-          page = addPage('Continued');
-          y = 792 - margin - 50;
-        }
-        page.drawText(text, { x: margin, y, size: 12, font, color: rgb(0,0,0) });
-        y -= lineHeight;
+      // pdf-lib sets text via field.setText for text fields.
+      try {
+        // setText works for text fields; if other field type, catch and ignore for now
+        field.setText(String(val));
+      } catch {
+        // no-op for non-text fields in this simple example
       }
     }
 
-    const bytes = await pdf.save();
-    return new Response(bytes, {
+    // Flatten if you want the fields to be non-editable:
+    // form.flatten();
+
+    const out = await pdfDoc.save();
+    return new NextResponse(Buffer.from(out), {
       status: 200,
       headers: {
-        'content-type': 'application/pdf',
-        'content-disposition': 'attachment; filename="I-129F-draft.pdf"',
-        'cache-control': 'no-store',
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'attachment; filename="I-129F-draft.pdf"',
       },
     });
-  } catch (e) {
-    console.error('PDF error', e);
-    return NextResponse.json({ error: 'PDF generation failed' }, { status: 500 });
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: err?.message || String(err) },
+      { status: 500 }
+    );
   }
 }
