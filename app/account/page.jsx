@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 export default function AccountPage() {
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState('login'); // <-- plain JS
 
   const onLogin = async (e) => {
     e.preventDefault();
@@ -18,7 +18,6 @@ export default function AccountPage() {
       body: JSON.stringify(body),
     });
     if (res.ok) {
-      // go to tool after login
       window.location.href = '/flow/us/i-129f';
     } else {
       alert('Login failed');
@@ -79,7 +78,6 @@ export default function AccountPage() {
 
               <button className="btn btn-primary" type="submit">Sign in</button>
 
-              {/* <-- This is the new link you asked for */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <button
                   type="button"
