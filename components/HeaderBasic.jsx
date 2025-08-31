@@ -29,7 +29,7 @@ export default function SiteHeader() {
         {/* Center: Brand (logo + text) */}
         <Link href="/" className="brand" style={{display:'flex', alignItems:'center', gap:8, textDecoration:'none'}}>
           <img
-            src="/newlogo.jpg"
+            src="/logo.svg"
             alt="Liason logo"
             width={28}
             height={28}
