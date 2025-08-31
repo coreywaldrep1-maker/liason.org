@@ -1,0 +1,12 @@
+{
+  "brand": "Liason",
+  "menu.home": "Home",
+  "menu.visas": "Visas",
+  "menu.about": "About",
+  "menu.policies": "Policies",
+  "home.title": "Welcome to Liason",
+  "home.subtitle": "Our mission is streamlining the visa process to connect you to the world.",
+  "cta.exploreVisas": "Explore visas",
+  "auth.login": "Login",
+  "auth.loggedIn": "Logged in"
+}
