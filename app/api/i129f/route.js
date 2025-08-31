@@ -1,71 +1,111 @@
 // app/api/i129f/route.js
 import { NextResponse } from 'next/server';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { COORDS } from '@/lib/i129fCoords';
+import { PDFDocument } from 'pdf-lib';
+import { I129F_FIELD_MAP as MAP } from '@/lib/i129fFieldMap';
 
-export const dynamic = 'force-dynamic';
+// Location of your finalized AcroForm:
+// Put your finished PDF at public/forms/i-129f.pdf
+const PDF_PATH = `${process.cwd()}/public/forms/i-129f.pdf`;
 
-// Trim text so it doesn't overflow the box width (very simple fit)
-function fitToWidth(font, size, text, maxWidth) {
-  if (!maxWidth) return text;
-  let s = String(text);
-  while (s.length > 0 && font.widthOfTextAtSize(s, size) > maxWidth) {
-    s = s.slice(0, -1);
-  }
-  return s;
+// --- Helpers ---------------------------------------------------------------
+
+async function loadPdf() {
+  const fs = await import('fs/promises');
+  const bytes = await fs.readFile(PDF_PATH);
+  // ignoreEncryption true: safe if the file has an “encryption flag” but no password
+  return PDFDocument.load(bytes, { ignoreEncryption: true });
 }
 
-export async function POST(request) {
+function setTextSafe(form, fieldName, value) {
+  if (!value && value !== 0) return;
   try {
-    const body = await request.json(); // expecting { values: {...} }
-    const values = body?.values || {};
+    const f = form.getTextField(fieldName);
+    f.setText(String(value));
+  } catch {
+    // ignore missing field
+  }
+}
 
-    const pdfPath = path.join(process.cwd(), 'public', 'forms', 'i-129f.pdf');
-    const bytes = await fs.readFile(pdfPath);
-
-    // Allow loading encrypted PDFs (many USCIS PDFs are flagged)
-    const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-    // Draw values at coordinates
-    for (const row of COORDS) {
-      const { key, page, x, y, size = 10, maxWidth, asCheckbox } = row;
-      const val = values[key];
-      if (val == null || val === '') continue;
-
-      const pages = pdfDoc.getPages();
-      if (page < 0 || page >= pages.length) continue;
-      const p = pages[page];
-
-      if (asCheckbox) {
-        // Draw an "X" for checked
-        const text = (val === true || String(val).toLowerCase() === 'true') ? 'X' : '';
-        if (text) {
-          p.drawText(text, { x, y, size, font, color: rgb(0, 0, 0) });
-        }
-      } else {
-        const text = fitToWidth(font, size, String(val), maxWidth);
-        if (text) {
-          p.drawText(text, { x, y, size, font, color: rgb(0, 0, 0) });
-        }
+function setCheckSafe(form, fieldName, checked) {
+  try {
+    const f = form.getCheckBox(fieldName);
+    if (checked) f.check();
+    else f.uncheck();
+  } catch {
+    // if it’s actually a radio group, try selecting when true
+    if (checked) {
+      try {
+        const r = form.getRadioGroup(fieldName);
+        // If your radio has multiple options, you can set a specific one later.
+        // Here, we just “select the group” by picking the first option name.
+        const opts = r.getOptions();
+        if (opts && opts.length) r.select(opts[0]);
+      } catch {
+        // ignore
       }
     }
+  }
+}
 
-    // Optional: flatten appearance (not strictly needed since we're drawing, not fields)
-    const out = await pdfDoc.save();
-    return new NextResponse(Buffer.from(out), {
+function applyData(form, data) {
+  // Text fields
+  for (const [key, pdfName] of Object.entries(MAP.text)) {
+    setTextSafe(form, pdfName, data[key]);
+  }
+  // Checkboxes/radios
+  for (const [key, pdfName] of Object.entries(MAP.checks)) {
+    const val = data[key];
+    if (typeof val === 'boolean') setCheckSafe(form, pdfName, val);
+    else if (val === 'yes' || val === 'on' || val === 'true' || val === '1') setCheckSafe(form, pdfName, true);
+    else setCheckSafe(form, pdfName, false);
+  }
+}
+
+// --- Routes ----------------------------------------------------------------
+
+// GET  /api/i129f?fields=1   -> quick dump of field names
+export async function GET(req) {
+  const { searchParams } = new URL(req.url);
+  const wantFields = searchParams.get('fields');
+
+  try {
+    const pdfDoc = await loadPdf();
+    const form = pdfDoc.getForm();
+
+    if (wantFields) {
+      const names = form.getFields().map(f => f.getName());
+      return NextResponse.json({ ok: true, count: names.length, fields: names });
+    }
+
+    return NextResponse.json({ ok: true, message: 'I-129F PDF endpoint' });
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+  }
+}
+
+// POST /api/i129f  with JSON: { data: {...} } -> returns filled PDF
+export async function POST(req) {
+  try {
+    const body = await req.json().catch(() => ({}));
+    const data = body?.data || {};
+
+    const pdfDoc = await loadPdf();
+    const form = pdfDoc.getForm();
+
+    applyData(form, data);
+
+    // (Optional) flatten so text is embedded and fields aren’t editable:
+    // form.flatten();
+
+    const bytes = await pdfDoc.save();
+    return new NextResponse(Buffer.from(bytes), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="I-129F-draft.pdf"',
+        'Content-Disposition': 'attachment; filename="i-129f-filled.pdf"',
       },
     });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err?.message || String(err) },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }
