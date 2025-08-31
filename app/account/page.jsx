@@ -1,155 +1,141 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 export default function AccountPage() {
-  const router = useRouter();
-  const [mode, setMode] = useState('login'); // 'login' | 'signup'
-  const [user, setUser] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
 
-  // On mount, check session
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch('/api/auth/whoami', { cache: 'no-store' });
-        const j = await r.json();
-        if (j?.ok && j.user) setUser(j.user);
-      } catch (e) {
-        // ignore
-      }
-    })();
-  }, []);
-
-  async function handleSignup(e) {
+  const onLogin = async (e) => {
     e.preventDefault();
-    setBusy(true); setError('');
     const form = new FormData(e.currentTarget);
-    const email = String(form.get('email') || '').trim();
-    const password = String(form.get('password') || '');
-
-    try {
-      const r = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ email, password }),
-      });
-      const j = await r.json();
-      if (!r.ok || !j.ok) throw new Error(j?.error || 'Sign up failed');
-
-      setUser(j.user);
-      // Redirect after successful sign up (choose where you want to land)
-      window.location.href = '/'; // or '/account' to stay here and show dashboard
-    } catch (err) {
-      setError(String(err.message || err));
-    } finally {
-      setBusy(false);
+    const body = {
+      email: form.get('email')?.toString().trim(),
+      password: form.get('password')?.toString(),
+    };
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      // go to tool after login
+      window.location.href = '/flow/us/i-129f';
+    } else {
+      alert('Login failed');
     }
-  }
+  };
 
-  async function handleLogin(e) {
+  const onSignup = async (e) => {
     e.preventDefault();
-    setBusy(true); setError('');
     const form = new FormData(e.currentTarget);
-    const email = String(form.get('email') || '').trim();
-    const password = String(form.get('password') || '');
-
-    try {
-      const r = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ email, password }),
-      });
-      const j = await r.json();
-      if (!r.ok || !j.ok) throw new Error(j?.error || 'Login failed');
-
-      setUser(j.user);
-      // Redirect after successful login (choose where you want to land)
-      window.location.href = '/'; // or '/account'
-    } catch (err) {
-      setError(String(err.message || err));
-    } finally {
-      setBusy(false);
+    const body = {
+      email: form.get('email')?.toString().trim(),
+      password: form.get('password')?.toString(),
+    };
+    const res = await fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      alert('Account created. Please log in.');
+      setMode('login');
+    } else {
+      alert('Sign up failed');
     }
-  }
+  };
 
-  async function handleLogout() {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-    } catch {}
-    setUser(null);
-    router.refresh();
-    window.location.href = '/';
-  }
-
-  // If logged in, show a simple account panel instead of forms
-  if (user) {
-    return (
-      <main className="section">
-        <div className="container" style={{display:'grid', gap:16}}>
-          <div className="card" style={{display:'grid', gap:12}}>
-            <h1 style={{margin:0}}>Account</h1>
-            <div className="small">Signed in as <b>{user.email}</b></div>
-            <div style={{display:'flex', gap:8}}>
-              <a href="/flow/us/i-129f" className="btn btn-primary">Go to I-129F</a>
-              <button type="button" className="btn" onClick={handleLogout}>Sign out</button>
-            </div>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  // Not logged in: show login/signup switcher
   return (
     <main className="section">
-      <div className="container" style={{display:'grid', gap:16}}>
-        <div style={{display:'flex', gap:8}}>
-          <button
-            className={mode === 'login' ? 'btn btn-primary' : 'btn'}
-            onClick={() => setMode('login')}
-            type="button"
-          >
-            Sign in
-          </button>
-          <button
-            className={mode === 'signup' ? 'btn btn-primary' : 'btn'}
-            onClick={() => setMode('signup')}
-            type="button"
-          >
-            Create account
-          </button>
-        </div>
-
-        {error ? <div className="card" style={{color:'#b91c1c'}}>{error}</div> : null}
+      <div className="container" style={{ maxWidth: 480, display: 'grid', gap: 16 }}>
+        <h1 style={{ margin: 0 }}>{mode === 'login' ? 'Sign in' : 'Create account'}</h1>
 
         {mode === 'login' ? (
-          <form className="card" onSubmit={handleLogin} style={{display:'grid', gap:12}}>
-            <h1 style={{margin:0}}>Sign in</h1>
-            <label className="small">Email<br/>
-              <input name="email" type="email" required style={{width:'100%', padding:8, border:'1px solid #e2e8f0', borderRadius:8}}/>
-            </label>
-            <label className="small">Password<br/>
-              <input name="password" type="password" required style={{width:'100%', padding:8, border:'1px solid #e2e8f0', borderRadius:8}}/>
-            </label>
-            <button className="btn btn-primary" disabled={busy} type="submit">
-              {busy ? 'Signing in…' : 'Sign in'}
-            </button>
+          <form className="card" onSubmit={onLogin}>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <label className="small">
+                Email
+                <br />
+                <input
+                  type="email"
+                  name="email"
+                  required
+                  placeholder="you@email.com"
+                  style={{ width: '100%', padding: 8, border: '1px solid #e2e8f0', borderRadius: 8 }}
+                />
+              </label>
+
+              <label className="small">
+                Password
+                <br />
+                <input
+                  type="password"
+                  name="password"
+                  required
+                  placeholder="••••••••"
+                  style={{ width: '100%', padding: 8, border: '1px solid #e2e8f0', borderRadius: 8 }}
+                />
+              </label>
+
+              <button className="btn btn-primary" type="submit">Sign in</button>
+
+              {/* <-- This is the new link you asked for */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="small"
+                  onClick={() => setMode('signup')}
+                  style={{ background: 'transparent', border: 0, padding: 0, textDecoration: 'underline', cursor: 'pointer' }}
+                >
+                  Create account
+                </button>
+
+                <a className="small" href="/account/reset" style={{ textDecoration: 'underline' }}>
+                  Forgot password?
+                </a>
+              </div>
+            </div>
           </form>
         ) : (
-          <form className="card" onSubmit={handleSignup} style={{display:'grid', gap:12}}>
-            <h1 style={{margin:0}}>Create account</h1>
-            <label className="small">Email<br/>
-              <input name="email" type="email" required style={{width:'100%', padding:8, border:'1px solid #e2e8f0', borderRadius:8}}/>
-            </label>
-            <label className="small">Password<br/>
-              <input name="password" type="password" required style={{width:'100%', padding:8, border:'1px solid #e2e8f0', borderRadius:8}}/>
-            </label>
-            <button className="btn btn-primary" disabled={busy} type="submit">
-              {busy ? 'Creating…' : 'Create account'}
-            </button>
+          <form className="card" onSubmit={onSignup}>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <label className="small">
+                Email
+                <br />
+                <input
+                  type="email"
+                  name="email"
+                  required
+                  placeholder="you@email.com"
+                  style={{ width: '100%', padding: 8, border: '1px solid #e2e8f0', borderRadius: 8 }}
+                />
+              </label>
+
+              <label className="small">
+                Password
+                <br />
+                <input
+                  type="password"
+                  name="password"
+                  required
+                  placeholder="Create a strong password"
+                  style={{ width: '100%', padding: 8, border: '1px solid #e2e8f0', borderRadius: 8 }}
+                />
+              </label>
+
+              <button className="btn btn-primary" type="submit">Create account</button>
+
+              <div style={{ textAlign: 'right' }}>
+                <button
+                  type="button"
+                  className="small"
+                  onClick={() => setMode('login')}
+                  style={{ background: 'transparent', border: 0, padding: 0, textDecoration: 'underline', cursor: 'pointer' }}
+                >
+                  Back to sign in
+                </button>
+              </div>
+            </div>
           </form>
         )}
       </div>
