@@ -7,11 +7,9 @@ export const metadata = {
   description: 'Streamlining the visa process to connect you to the world.',
 };
 
-// This is a Server Component (no "use client"), so we can call translate() here.
 export default async function Home() {
-  const lang = getLang();
+  const lang = getLang(); // reads cookie; makes the page dynamic
 
-  // Translate the strings you show on the page
   const title = await translate('Welcome to Liason', lang, 'home.hero.title');
   const subtitle = await translate(
     'Our mission is streamlining the visa process to connect you to the world. Start with the visa that best fits your situation.',
@@ -28,15 +26,8 @@ export default async function Home() {
   return (
     <main className="section">
       <div className="container" style={{ display: 'grid', gap: 16 }}>
-        <Hero
-          image="/hero.jpg"
-          title={title}        // pass translated string
-          subtitle={subtitle}  // pass translated string
-          ctas={[{ href: '/visas', label: cta, primary: true }]} // translated CTA
-        />
-        <div className="card">
-          <p>{blurb}</p>
-        </div>
+        <Hero image="/hero.jpg" title={title} subtitle={subtitle} ctas={[{ href:'/visas', label: cta, primary:true }]} />
+        <div className="card"><p>{blurb}</p></div>
       </div>
     </main>
   );
