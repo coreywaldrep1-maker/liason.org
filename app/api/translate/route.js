@@ -1,67 +1,45 @@
 // app/api/translate/route.js
-// Runtime: Node (NOT edge) to keep it simple and avoid "crypto" issues.
-export const runtime = 'nodejs';
-
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 
-function pickHost() {
-  return process.env.DEEPL_API_HOST?.trim() || 'https://api-free.deepl.com';
-}
+export const runtime = 'edge'; // fast and fine for this route
 
-export async function POST(request) {
+export async function POST(req) {
   try {
-    const body = await request.json().catch(() => ({}));
-    let { text, target } = body;
-
-    if (typeof text === 'undefined' || text === null) {
-      return NextResponse.json({ ok: false, error: 'Missing "text"' }, { status: 400 });
+    const { q, target } = await req.json();
+    if (!q || !target) {
+      return NextResponse.json({ ok: false, error: 'Missing q or target' }, { status: 400 });
     }
 
-    // Accept string or string[]
-    const texts = Array.isArray(text) ? text : [String(text)];
-    const cookieStore = cookies();
-    const cookieLang = cookieStore.get('liason_lang')?.value || 'en';
-
-    const targetLang = (target || cookieLang || 'en').toUpperCase();
-
-    // If target is English, or all texts are empty/plain, return original (no cost)
-    if (targetLang === 'EN' || texts.every(t => !t || !t.trim())) {
-      return NextResponse.json({ ok: true, translations: texts });
+    const key = process.env.DEEPL_API_KEY;
+    if (!key) {
+      return NextResponse.json({ ok: false, error: 'DEEPL_API_KEY not set' }, { status: 500 });
     }
 
-    const apiKey = process.env.DEEPL_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ ok: false, error: 'DEEPL_API_KEY missing' }, { status: 500 });
-    }
+    // DeepL expects ISO language codes like 'ES', 'FR' etc.
+    const deeplTarget = target.toUpperCase();
 
-    // Build form body per DeepL docs: multiple "text" fields
-    const params = new URLSearchParams();
-    texts.forEach((t) => params.append('text', t));
-    params.append('target_lang', targetLang);
+    const form = new URLSearchParams();
+    form.set('text', q);
+    form.set('target_lang', deeplTarget);
 
-    const host = pickHost();
-    const res = await fetch(`${host}/v2/translate`, {
+    const res = await fetch('https://api-free.deepl.com/v2/translate', {
       method: 'POST',
       headers: {
-        Authorization: `DeepL-Auth-Key ${apiKey}`,
+        'Authorization': `DeepL-Auth-Key ${key}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: params.toString(),
+      body: form.toString(),
     });
 
     if (!res.ok) {
-      const errText = await res.text().catch(() => res.statusText);
-      return NextResponse.json({ ok: false, error: `DeepL error: ${res.status} ${errText}` }, { status: 502 });
+      const t = await res.text();
+      return NextResponse.json({ ok: false, error: `DeepL error: ${t}` }, { status: 500 });
     }
 
     const data = await res.json();
-    const translations = (data.translations || []).map((t) => t.text);
+    const text = data?.translations?.[0]?.text || q;
 
-    // Fallback safety
-    if (!translations.length) return NextResponse.json({ ok: true, translations: texts });
-
-    return NextResponse.json({ ok: true, translations });
+    return NextResponse.json({ ok: true, text });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
