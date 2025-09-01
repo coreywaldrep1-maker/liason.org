@@ -1,0 +1,14 @@
+// components/Trans.jsx
+import { getLang } from '@/lib/i18n';
+import { translate } from '@/lib/translate';
+
+/**
+ * Use for simple text nodes: <Trans id="home.title">Welcome to Liason</Trans>
+ * Avoid wrapping complex markup; keep it to strings you want translated.
+ */
+export default async function Trans({ id, children }) {
+  const raw = Array.isArray(children) ? children.join('') : String(children ?? '');
+  const lang = getLang();
+  const out = await translate(raw, lang, id);
+  return out;
+}
