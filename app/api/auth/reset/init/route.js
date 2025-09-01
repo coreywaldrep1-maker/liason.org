@@ -1,13 +1,18 @@
 // app/api/auth/reset/init/route.js
 import { NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
-import crypto from 'crypto';
+import { sql } from '@/lib/db';
 
-export const runtime = 'edge'; // optional, works fine with Neon
+export const runtime = 'edge'; // Edge-friendly
 
-const sql = neon(process.env.DATABASE_URL);
+function randomHex(bytes = 32) {
+  const buf = new Uint8Array(bytes);
+  crypto.getRandomValues(buf);
+  let out = '';
+  for (let b of buf) out += b.toString(16).padStart(2, '0');
+  return out;
+}
 
-// Simple GET so visiting the URL doesn't 404 or 405
+// Simple GET so visiting the URL doesn’t 405
 export async function GET() {
   return NextResponse.json({
     ok: true,
@@ -24,34 +29,28 @@ export async function POST(req) {
     }
     const em = String(email).trim().toLowerCase();
 
-    // Look up user (don’t reveal existence)
     const users = await sql`SELECT id FROM users WHERE email = ${em} LIMIT 1`;
+    // Always respond "ok" to avoid user enumeration
     if (users.length === 0) {
-      // Return ok anyway to avoid user enumeration
-      return NextResponse.json({
-        ok: true,
-        sent: true,
-        note: 'If that email exists, a reset link was created.',
-      });
+      return NextResponse.json({ ok: true, sent: true });
     }
 
     const userId = users[0].id;
 
-    // Invalidate any previous unused tokens for this user (optional safety)
-    await sql`UPDATE password_resets SET used_at = now() WHERE user_id = ${userId} AND used_at IS NULL`;
+    // Invalidate older tokens (optional safety)
+    await sql`
+      UPDATE password_resets
+      SET used_at = now()
+      WHERE user_id = ${userId} AND used_at IS NULL
+    `;
 
-    // Create new token (expires in 1 hour)
-    const token = crypto.randomBytes(32).toString('hex');
+    const token = randomHex(32);
     await sql`
       INSERT INTO password_resets (user_id, token, expires_at)
       VALUES (${userId}, ${token}, now() + interval '1 hour')
     `;
 
-    // TODO: email the link to the user
-    // const base = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.liason.org';
-    // const link = `${base}/reset?token=${token}`;
-
-    // For now, return token for end-to-end testing
+    // TODO: email link to user. For testing, return token:
     return NextResponse.json({ ok: true, token });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
