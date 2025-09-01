@@ -1,7 +1,7 @@
 // app/api/translate/route.js
 import { NextResponse } from 'next/server';
 
-export const runtime = 'edge'; // fast and fine for this route
+export const runtime = 'edge'; // fast & fine for this API route
 
 export async function POST(req) {
   try {
@@ -15,30 +15,31 @@ export async function POST(req) {
       return NextResponse.json({ ok: false, error: 'DEEPL_API_KEY not set' }, { status: 500 });
     }
 
-    // DeepL expects ISO language codes like 'ES', 'FR' etc.
-    const deeplTarget = target.toUpperCase();
+    // If your key ends with ":fx", it's a FREE key → use api-free.
+    const endpoint = key.endsWith(':fx')
+      ? 'https://api-free.deepl.com/v2/translate'
+      : 'https://api.deepl.com/v2/translate';
 
+    // Use form params and include the key as "auth_key" (DeepL’s preferred method)
     const form = new URLSearchParams();
+    form.set('auth_key', key);
     form.set('text', q);
-    form.set('target_lang', deeplTarget);
+    form.set('target_lang', target.toUpperCase()); // e.g., 'ES', 'FR', 'DE', 'EN', 'PT', 'IT'
 
-    const res = await fetch('https://api-free.deepl.com/v2/translate', {
+    const res = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Authorization': `DeepL-Auth-Key ${key}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form.toString(),
     });
 
+    const raw = await res.text();
     if (!res.ok) {
-      const t = await res.text();
-      return NextResponse.json({ ok: false, error: `DeepL error: ${t}` }, { status: 500 });
+      // Bubble up DeepL’s message so you can see what’s wrong
+      return NextResponse.json({ ok: false, error: `DeepL error: ${raw}` }, { status: res.status });
     }
 
-    const data = await res.json();
-    const text = data?.translations?.[0]?.text || q;
-
+    const data = JSON.parse(raw);
+    const text = data?.translations?.[0]?.text ?? q;
     return NextResponse.json({ ok: true, text });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
