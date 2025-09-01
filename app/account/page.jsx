@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 export default function AccountPage() {
-  const [mode, setMode] = useState('login'); // <-- plain JS
+  const [mode, setMode] = useState('login'); // 'login' | 'signup'
 
   const onLogin = async (e) => {
     e.preventDefault();
@@ -88,7 +88,8 @@ export default function AccountPage() {
                   Create account
                 </button>
 
-                <a className="small" href="/account/reset" style={{ textDecoration: 'underline' }}>
+                {/* FIXED: point to /reset (not /account/reset) */}
+                <a className="small" href="/reset" style={{ textDecoration: 'underline' }}>
                   Forgot password?
                 </a>
               </div>
