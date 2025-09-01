@@ -2,9 +2,6 @@
 
 import { useState } from 'react';
 
-export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Reset password | Liason' };
-
 export default function ResetPage() {
   const [tab, setTab] = useState('request'); // 'request' | 'complete'
   const [email, setEmail] = useState('');
