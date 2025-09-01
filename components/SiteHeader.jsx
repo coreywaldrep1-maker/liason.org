@@ -1,14 +1,11 @@
-// components/SiteHeader.jsx
 'use client';
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import MenuDropdown from './MenuDropdown';
 import LanguageSwitcher from './LanguageSwitcher';
-import { useI18n } from './I18nProvider';
 
 export default function SiteHeader() {
-  const { t } = useI18n();
   const [authed, setAuthed] = useState(false);
 
   useEffect(() => {
@@ -27,7 +24,7 @@ export default function SiteHeader() {
           padding: '12px 0',
         }}
       >
-        {/* LEFT: Dropdown + Language */}
+        {/* LEFT: Menu + Language */}
         <div style={{ justifySelf: 'start', display: 'flex', alignItems: 'center', gap: 10 }}>
           <MenuDropdown />
           <LanguageSwitcher />
@@ -37,23 +34,19 @@ export default function SiteHeader() {
         <div style={{ justifySelf: 'center' }}>
           <Link
             href="/"
-            className="logo"
-            aria-label={t('brand.name')}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', color: '#0f172a' }}
+            className="brand"
+            aria-label="Liason home"
+            style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}
           >
-            <img src="/logo.svg" alt="Liason logo" width={24} height={24} />
-            <span style={{ fontWeight: 700, fontSize: 18 }}>{t('brand.name')}</span>
+            <img src="/logo.svg" alt="Liason logo" width={28} height={28} style={{ display: 'block' }} />
+            <span style={{ fontWeight: 700, fontSize: 18, color: '#0f172a' }}>Liason</span>
           </Link>
         </div>
 
-        {/* RIGHT: Login + person icon */}
+        {/* RIGHT: Login + account icon */}
         <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Link
-            href="/account"
-            className="small"
-            style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 8, textDecoration: 'none', background: '#fff' }}
-          >
-            {authed ? t('auth.loggedIn') : t('auth.login')}
+          <Link href="/account" className="small" style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', textDecoration: 'none' }}>
+            {authed ? 'Logged in' : 'Login'}
           </Link>
           <Link href="/account" aria-label="Account" style={{ display: 'inline-flex', alignItems: 'center' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
