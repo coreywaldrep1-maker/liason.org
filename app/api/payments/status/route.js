@@ -1,16 +1,18 @@
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { sql } from '@/lib/db';
 import { jwtVerify } from 'jose';
-import { getPool } from '@/lib/db';
 
-const enc = new TextEncoder();
+export const runtime = 'edge';
 
-async function getUserFromCookie() {
-  const token = cookies().get('token')?.value;
-  if (!token) return null;
+const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+
+async function getUserFromCookie(req) {
+  const cookie = req.headers.get('cookie') || '';
+  const match = cookie.match(/(?:^|;\s*)liason_token=([^;]+)/);
+  if (!match) return null;
   try {
-    const { payload } = await jwtVerify(token, enc.encode(process.env.JWT_SECRET));
-    return payload; // { sub, email, ... }
+    const { payload } = await jwtVerify(decodeURIComponent(match[1]), secret);
+    return payload?.uid || null;
   } catch {
     return null;
   }
@@ -18,21 +20,19 @@ async function getUserFromCookie() {
 
 export async function GET(req) {
   try {
-    const url = new URL(req.url);
-    const product = url.searchParams.get('product') || 'i129f';
+    const uid = await getUserFromCookie(req);
+    if (!uid) return NextResponse.json({ ok: true, paid: false });
 
-    const user = await getUserFromCookie();
-    if (!user) return NextResponse.json({ ok: false, error: 'not_signed_in' }, { status: 401 });
-
-    const pool = getPool();
-    const { rows } = await pool.query(
-      'SELECT paid FROM user_payments WHERE user_id=$1 AND product=$2 LIMIT 1',
-      [user.sub, product]
-    );
-    const paid = rows?.[0]?.paid ?? false;
-
+    const rows = await sql`
+      SELECT paid
+      FROM payments
+      WHERE user_id = ${uid} AND product = 'i129f'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    const paid = rows.length > 0 ? !!rows[0].paid : false;
     return NextResponse.json({ ok: true, paid });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: 'server_error' }, { status: 500 });
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
