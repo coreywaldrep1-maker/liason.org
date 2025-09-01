@@ -5,6 +5,15 @@ import bcrypt from 'bcryptjs';
 
 const sql = neon(process.env.DATABASE_URL);
 
+// Helpful GET so the endpoint doesn't 404 in a browser
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    endpoint: '/api/auth/reset/complete',
+    usage: 'POST JSON { token, newPassword }'
+  });
+}
+
 export async function POST(request) {
   try {
     const { token, newPassword } = await request.json();
@@ -12,7 +21,6 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: 'Missing token or newPassword' }, { status: 400 });
     }
 
-    // Look up valid token
     const rows = await sql`
       SELECT pr.user_id
       FROM password_resets pr
@@ -26,12 +34,8 @@ export async function POST(request) {
     }
 
     const userId = rows[0].user_id;
-
-    // Update password
     const hash = await bcrypt.hash(newPassword, 10);
     await sql`UPDATE users SET password_hash = ${hash} WHERE id = ${userId}`;
-
-    // Mark token used
     await sql`UPDATE password_resets SET used_at = now() WHERE token = ${token}`;
 
     return NextResponse.json({ ok: true });
@@ -39,3 +43,4 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
+
