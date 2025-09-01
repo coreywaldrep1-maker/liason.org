@@ -1,36 +1,39 @@
-// components/LanguageSwitcher.jsx
 'use client';
+import { useState, useEffect } from 'react';
 
-import { useEffect, useState } from 'react';
-import { LOCALES } from '@/i18n/config';
+const OPTIONS = [
+  { code:'en', label:'English' },
+  { code:'es', label:'Español' },
+  { code:'fr', label:'Français' },
+  { code:'de', label:'Deutsch' },
+  { code:'pt', label:'Português' },
+  { code:'it', label:'Italiano' },
+  { code:'zh', label:'中文' },
+  { code:'ja', label:'日本語' },
+  { code:'ko', label:'한국어' },
+  { code:'ar', label:'العربية' },
+  { code:'hi', label:'हिन्दी' },
+];
 
 export default function LanguageSwitcher() {
   const [lang, setLang] = useState('en');
 
   useEffect(() => {
-    const m = document.cookie.match(/(?:^|;\s*)liason_lang=([^;]+)/);
-    setLang(m ? decodeURIComponent(m[1]) : 'en');
+    const m = document.cookie.match(/(?:^|;\s*)lang=([^;]+)/);
+    if (m) setLang(decodeURIComponent(m[1]));
   }, []);
 
   function onChange(e) {
-    const value = e.target.value;
-    document.cookie = `liason_lang=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax`;
+    const val = e.target.value;
+    setLang(val);
+    // set cookie for 1 year, strict path
+    document.cookie = `lang=${encodeURIComponent(val)}; Max-Age=${60*60*24*365}; Path=/; SameSite=Lax`;
     window.location.reload();
   }
 
   return (
-    <select
-      aria-label="Language"
-      value={lang}
-      onChange={onChange}
-      className="small"
-      style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }}
-    >
-      {LOCALES.map(l => (
-        <option key={l} value={l}>
-          {l.toUpperCase()}
-        </option>
-      ))}
+    <select value={lang} onChange={onChange} aria-label="Language">
+      {OPTIONS.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
     </select>
   );
 }
