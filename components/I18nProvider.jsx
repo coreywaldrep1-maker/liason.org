@@ -1,37 +1,15 @@
+// components/I18nProvider.jsx
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import en from '../i18n/en.json';
-import es from '../i18n/es.json';
+import { createContext, useContext, useMemo } from 'react';
 
-const catalogs = { en, es };
+const I18nCtx = createContext({ t: (k) => k, locale: 'en' });
 
-const I18nCtx = createContext({ lang: 'en', t: (k) => k, setLang: () => {} });
-
-export function I18nProvider({ children }) {
-  const [lang, setLang] = useState('en');
-
-  // read saved lang
-  useEffect(() => {
-    const saved = localStorage.getItem('liason_lang');
-    if (saved && catalogs[saved]) setLang(saved);
-  }, []);
-
-  const t = useMemo(() => {
-    const cat = catalogs[lang] || catalogs.en;
-    return (key) => cat[key] ?? key;
-  }, [lang]);
-
-  const value = useMemo(() => ({
-    lang,
-    t,
-    setLang: (l) => {
-      if (!catalogs[l]) return;
-      localStorage.setItem('liason_lang', l);
-      setLang(l);
-    }
-  }), [lang, t]);
-
+export function I18nProvider({ dict, initialLocale, children }) {
+  const value = useMemo(
+    () => ({ t: (k) => (dict?.[k] ?? k), locale: initialLocale || 'en' }),
+    [dict, initialLocale]
+  );
   return <I18nCtx.Provider value={value}>{children}</I18nCtx.Provider>;
 }
 
