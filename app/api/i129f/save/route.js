@@ -1,47 +1,36 @@
 import { NextResponse } from 'next/server';
-import { getPool } from '@/lib/db';
+import { sql } from '@/lib/db';
 import { jwtVerify } from 'jose';
 
-const enc = new TextEncoder();
+export const runtime = 'edge';
 
-async function getUserId() {
+const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+
+async function getUserFromCookie(req) {
+  const cookie = req.headers.get('cookie') || '';
+  const match = cookie.match(/(?:^|;\s*)liason_token=([^;]+)/);
+  if (!match) return null;
   try {
-    const cookie = require('next/headers').cookies().get('liason_token')?.value;
-    if (!cookie) return null;
-    const { payload } = await jwtVerify(cookie, enc.encode(process.env.JWT_SECRET));
-    return payload.sub;
-  } catch { return null; }
+    const { payload } = await jwtVerify(decodeURIComponent(match[1]), secret);
+    return payload?.uid || null;
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(req) {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const { answers } = await req.json();
-  if (!answers || typeof answers !== 'object') {
-    return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
-  }
-
-  const pool = getPool();
   try {
-    await pool.query(
-      `insert into i129f_answers (user_id, answers, updated_at)
-       values ($1, $2, now())
-       on conflict (user_id) do update set answers = excluded.answers, updated_at = now()`,
-       [userId, answers]
-    );
+    const uid = await getUserFromCookie(req);
+    if (!uid) return NextResponse.json({ ok: false, error: 'Not authed' }, { status: 401 });
+
+    const body = await req.json(); // whatever fields you’re saving
+    await sql`
+      INSERT INTO i129f_forms (user_id, data)
+      VALUES (${uid}, ${body})
+      ON CONFLICT (user_id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+    `;
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
-}
-
-export async function GET() {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const pool = getPool();
-  const { rows } = await pool.query(`select answers from i129f_answers where user_id = $1`, [userId]);
-  return NextResponse.json({ answers: rows[0]?.answers || {} });
 }
