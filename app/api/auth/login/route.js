@@ -1,43 +1,54 @@
 import { NextResponse } from 'next/server';
-import { getPool } from '@/lib/db';
+import { sql } from '@/lib/db';
+import bcrypt from 'bcryptjs';
 import { SignJWT } from 'jose';
 
-const enc = new TextEncoder();
+export const runtime = 'edge';
+
+const secret = new TextEncoder().encode(process.env.JWT_SECRET);
 
 export async function POST(req) {
   try {
     const { email, password } = await req.json();
     if (!email || !password) {
-      return NextResponse.json({ ok: false, error: 'Missing email/password' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: 'Missing email or password' }, { status: 400 });
     }
+    const em = String(email).trim().toLowerCase();
 
-    const pool = getPool();
-    const { rows } = await pool.query(
-      'SELECT id, email FROM users WHERE email=$1 AND password_hash = crypt($2, password_hash)',
-      [email, password]
-    );
-    const user = rows[0];
-    if (!user) {
+    const rows = await sql`
+      SELECT id, email, password_hash
+      FROM users
+      WHERE email = ${em}
+      LIMIT 1
+    `;
+    if (rows.length === 0) {
       return NextResponse.json({ ok: false, error: 'Invalid credentials' }, { status: 401 });
     }
 
-    const token = await new SignJWT({ sub: String(user.id), email: user.email })
+    const user = rows[0];
+    const ok = await bcrypt.compare(password, user.password_hash || '');
+    if (!ok) {
+      return NextResponse.json({ ok: false, error: 'Invalid credentials' }, { status: 401 });
+    }
+
+    const token = await new SignJWT({ uid: user.id, email: user.email })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
-      .setExpirationTime('7d')
-      .sign(enc.encode(process.env.JWT_SECRET));
+      .setExpirationTime('30d')
+      .sign(secret);
 
-    const res = NextResponse.json({ ok: true, user: { id: user.id, email: user.email } });
-    res.cookies.set('token', token, {
+    const res = NextResponse.json({ ok: true });
+    res.cookies.set({
+      name: 'liason_token',
+      value: token,
       httpOnly: true,
-      secure: true,
       sameSite: 'lax',
+      secure: true,
       path: '/',
-      maxAge: 60 * 60 * 24 * 7,
-      domain: process.env.COOKIE_DOMAIN || undefined, // <- important
+      maxAge: 60 * 60 * 24 * 30,
     });
     return res;
   } catch (e) {
-    return NextResponse.json({ ok: false, error: 'Server error' }, { status: 500 });
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
