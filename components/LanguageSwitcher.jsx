@@ -1,39 +1,29 @@
 'use client';
-import { useState, useEffect } from 'react';
 
-const OPTIONS = [
-  { code:'en', label:'English' },
-  { code:'es', label:'Español' },
-  { code:'fr', label:'Français' },
-  { code:'de', label:'Deutsch' },
-  { code:'pt', label:'Português' },
-  { code:'it', label:'Italiano' },
-  { code:'zh', label:'中文' },
-  { code:'ja', label:'日本語' },
-  { code:'ko', label:'한국어' },
-  { code:'ar', label:'العربية' },
-  { code:'hi', label:'हिन्दी' },
-];
+import { useEffect, useState } from 'react';
+import { SUPPORTED, LANG_COOKIE } from '@/lib/i18n';
+import { useRouter } from 'next/navigation';
 
 export default function LanguageSwitcher() {
-  const [lang, setLang] = useState('en');
+  const router = useRouter();
+  const [val, setVal] = useState('en');
 
   useEffect(() => {
-    const m = document.cookie.match(/(?:^|;\s*)lang=([^;]+)/);
-    if (m) setLang(decodeURIComponent(m[1]));
+    const m = document.cookie.match(new RegExp(`${LANG_COOKIE}=([^;]+)`));
+    setVal(m ? decodeURIComponent(m[1]) : 'en');
   }, []);
 
-  function onChange(e) {
-    const val = e.target.value;
-    setLang(val);
-    // set cookie for 1 year, strict path
-    document.cookie = `lang=${encodeURIComponent(val)}; Max-Age=${60*60*24*365}; Path=/; SameSite=Lax`;
-    window.location.reload();
-  }
+  const change = (e) => {
+    const next = e.target.value;
+    document.cookie = `${LANG_COOKIE}=${encodeURIComponent(next)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    // Reload server components (so translations re-fetch)
+    router.refresh();
+  };
 
   return (
-    <select value={lang} onChange={onChange} aria-label="Language">
-      {OPTIONS.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
+    <select className="small" value={val} onChange={change}
+      style={{ padding:'6px 10px', border:'1px solid #e2e8f0', borderRadius:8, background:'#fff' }}>
+      {SUPPORTED.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
     </select>
   );
 }
