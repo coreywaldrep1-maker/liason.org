@@ -1,36 +1,19 @@
+// components/SiteHeader.jsx
 'use client';
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import LanguageSwitcher from './LanguageSwitcher';
 import MenuDropdown from './MenuDropdown';
+import LanguageSwitcher from './LanguageSwitcher';
+import { useI18n } from './I18nProvider';
 
 export default function SiteHeader() {
-  const [open, setOpen] = useState(false);
+  const { t } = useI18n();
   const [authed, setAuthed] = useState(false);
 
   useEffect(() => {
-    // simple check: if token cookie exists (set by your login route)
     setAuthed(document.cookie.includes('liason_token='));
   }, []);
-
-  const Brand = () => (
-    <Link
-      href="/"
-      className="brand"
-      aria-label="Liason home"
-      style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}
-    >
-      <img
-        src="/logo.svg"
-        alt="Liason logo"
-        width={28}
-        height={28}
-        style={{ display: 'block' }}
-      />
-      <span style={{ fontWeight: 700, fontSize: 20, color: '#0f172a' }}>Liason</span>
-    </Link>
-  );
 
   return (
     <header className="site-header" style={{ borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
@@ -41,53 +24,45 @@ export default function SiteHeader() {
           gridTemplateColumns: '1fr auto 1fr',
           alignItems: 'center',
           gap: 12,
-          padding: '10px 0',
+          padding: '12px 0',
         }}
       >
-        {/* LEFT: Menu + Language */}
+        {/* LEFT: Dropdown + Language */}
         <div style={{ justifySelf: 'start', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button
-            aria-label="Menu"
-            onClick={() => setOpen((v) => !v)}
-            className="small"
-            style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }}
-          >
-            ☰
-          </button>
+          <MenuDropdown />
           <LanguageSwitcher />
         </div>
 
         {/* CENTER: Brand (logo + text) */}
         <div style={{ justifySelf: 'center' }}>
-          <Brand />
+          <Link
+            href="/"
+            className="logo"
+            aria-label={t('brand.name')}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', color: '#0f172a' }}
+          >
+            <img src="/logo.svg" alt="Liason logo" width={24} height={24} />
+            <span style={{ fontWeight: 700, fontSize: 18 }}>{t('brand.name')}</span>
+          </Link>
         </div>
 
-        {/* RIGHT: Inline menu + Login */}
+        {/* RIGHT: Login + person icon */}
         <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <MenuDropdown />
           <Link
             href="/account"
             className="small"
-            style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', textDecoration: 'none' }}
+            style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 8, textDecoration: 'none', background: '#fff' }}
           >
-            {authed ? 'Logged in' : 'Login'}
+            {authed ? t('auth.loggedIn') : t('auth.login')}
+          </Link>
+          <Link href="/account" aria-label="Account" style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="8" r="4" stroke="#0f172a" strokeWidth="1.8" />
+              <path d="M4 20c1.6-3.5 5-5.5 8-5.5S18.4 16.5 20 20" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
           </Link>
         </div>
       </div>
-
-      {/* Dropdown (mobile/compact) */}
-      {open && (
-        <nav aria-label="Main" className="container" style={{ padding: '10px 0 12px' }}>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', gap: 10 }}>
-            <li><Link href="/" className="small" style={linkStyle}>Home</Link></li>
-            <li><Link href="/visas" className="small" style={linkStyle}>Visas</Link></li>
-            <li><Link href="/about" className="small" style={linkStyle}>About</Link></li>
-            <li><Link href="/policies" className="small" style={linkStyle}>Policies</Link></li>
-          </ul>
-        </nav>
-      )}
     </header>
   );
 }
-
-const linkStyle = { padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 8, textDecoration: 'none', background: '#fff' };
