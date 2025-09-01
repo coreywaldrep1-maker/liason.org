@@ -1,56 +1,36 @@
-// app/api/auth/reset/init/route.js
 import { NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
+import { neon } from '@neondatabase/serverless';
+import { randomBytes } from 'crypto';
 
-export const runtime = 'edge'; // Edge-friendly
+export const runtime = 'nodejs'; // IMPORTANT: use Node, not Edge
 
-function randomHex(bytes = 32) {
-  const buf = new Uint8Array(bytes);
-  crypto.getRandomValues(buf);
-  let out = '';
-  for (let b of buf) out += b.toString(16).padStart(2, '0');
-  return out;
-}
+const sql = neon(process.env.DATABASE_URL);
 
-// Simple GET so visiting the URL doesn’t 405
-export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    endpoint: '/api/auth/reset/init',
-    usage: 'POST JSON { email }',
-  });
-}
-
-export async function POST(req) {
+export async function POST(request) {
   try {
-    const { email } = await req.json();
+    const { email } = await request.json();
     if (!email) {
       return NextResponse.json({ ok: false, error: 'Missing email' }, { status: 400 });
     }
-    const em = String(email).trim().toLowerCase();
 
-    const users = await sql`SELECT id FROM users WHERE email = ${em} LIMIT 1`;
-    // Always respond "ok" to avoid user enumeration
+    // Look up the user (do not reveal existence in response)
+    const users = await sql`SELECT id FROM users WHERE email = ${email} LIMIT 1`;
     if (users.length === 0) {
-      return NextResponse.json({ ok: true, sent: true });
+      // Always return ok to avoid leaking whether the email exists
+      return NextResponse.json({ ok: true });
     }
 
     const userId = users[0].id;
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
 
-    // Invalidate older tokens (optional safety)
-    await sql`
-      UPDATE password_resets
-      SET used_at = now()
-      WHERE user_id = ${userId} AND used_at IS NULL
-    `;
-
-    const token = randomHex(32);
     await sql`
       INSERT INTO password_resets (user_id, token, expires_at)
-      VALUES (${userId}, ${token}, now() + interval '1 hour')
+      VALUES (${userId}, ${token}, ${expiresAt.toISOString()})
     `;
 
-    // TODO: email link to user. For testing, return token:
+    // TODO: send email with a link like: https://YOUR_SITE/reset?token=${token}
+    // For dev/testing, return the token:
     return NextResponse.json({ ok: true, token });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
