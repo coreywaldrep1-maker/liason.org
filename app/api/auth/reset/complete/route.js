@@ -1,9 +1,10 @@
-// app/api/auth/reset/complete/route.js
 import { NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
+import { neon } from '@neondatabase/serverless';
 import bcrypt from 'bcryptjs';
 
-export const runtime = 'edge'; // bcryptjs is pure JS; ok on Edge
+export const runtime = 'nodejs'; // IMPORTANT: use Node, not Edge
+
+const sql = neon(process.env.DATABASE_URL);
 
 export async function POST(request) {
   try {
@@ -12,12 +13,13 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: 'Missing token or newPassword' }, { status: 400 });
     }
 
+    // Validate token
     const rows = await sql`
-      SELECT pr.user_id
-      FROM password_resets pr
-      WHERE pr.token = ${token}
-        AND pr.used_at IS NULL
-        AND pr.expires_at > now()
+      SELECT user_id
+      FROM password_resets
+      WHERE token = ${token}
+        AND used_at IS NULL
+        AND expires_at > now()
       LIMIT 1
     `;
     if (rows.length === 0) {
@@ -26,8 +28,11 @@ export async function POST(request) {
 
     const userId = rows[0].user_id;
 
+    // Hash and update password
     const hash = await bcrypt.hash(newPassword, 10);
     await sql`UPDATE users SET password_hash = ${hash} WHERE id = ${userId}`;
+
+    // Mark token used
     await sql`UPDATE password_resets SET used_at = now() WHERE token = ${token}`;
 
     return NextResponse.json({ ok: true });
