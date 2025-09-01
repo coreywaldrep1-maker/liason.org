@@ -1,27 +1,36 @@
+// components/LanguageSwitcher.jsx
 'use client';
 
-export default function LanguageSwitcher() {
-  // read cookie if present
-  const current = (typeof document !== 'undefined' && document.cookie.match(/(?:^|; )liason_lang=([^;]+)/))
-    ? decodeURIComponent(RegExp.$1)
-    : 'en';
+import { useEffect, useState } from 'react';
+import { LOCALES } from '@/i18n/config';
 
-  const onChange = (e) => {
-    const val = e.target.value;
-    document.cookie = `liason_lang=${encodeURIComponent(val)}; path=/; max-age=31536000`;
+export default function LanguageSwitcher() {
+  const [lang, setLang] = useState('en');
+
+  useEffect(() => {
+    const m = document.cookie.match(/(?:^|;\s*)liason_lang=([^;]+)/);
+    setLang(m ? decodeURIComponent(m[1]) : 'en');
+  }, []);
+
+  function onChange(e) {
+    const value = e.target.value;
+    document.cookie = `liason_lang=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax`;
     window.location.reload();
-  };
+  }
 
   return (
     <select
       aria-label="Language"
-      defaultValue={current}
+      value={lang}
       onChange={onChange}
+      className="small"
       style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }}
     >
-      <option value="en">EN</option>
-      <option value="es">ES</option>
-      <option value="fr">FR</option>
+      {LOCALES.map(l => (
+        <option key={l} value={l}>
+          {l.toUpperCase()}
+        </option>
+      ))}
     </select>
   );
 }
