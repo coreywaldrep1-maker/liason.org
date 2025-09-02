@@ -1,18 +1,10 @@
-// app/api/auth/logout/route.js
 import { NextResponse } from 'next/server';
-
-export const runtime = 'edge';
 
 export async function POST() {
   const res = NextResponse.json({ ok: true });
-  // expire the cookie immediately
-  res.headers.set(
-    'Set-Cookie',
-    [
-      'liason_token=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0',
-      // if you also set a non-HttpOnly mirror cookie for UI, expire it too:
-      'liason_token_client=; Path=/; Secure; SameSite=Lax; Max-Age=0'
-    ].join(', ')
-  );
+  // Clear the auth token (name used by your login route)
+  res.cookies.set('liason_token', '', { httpOnly: true, path: '/', maxAge: 0 });
+  // Also clear paid cookie so UI reflects locked state next visit
+  res.cookies.set('i129f_paid', '', { path: '/', maxAge: 0 });
   return res;
 }
