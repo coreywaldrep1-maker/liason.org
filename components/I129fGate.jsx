@@ -2,47 +2,47 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import PayButtons from './PayButtons';
-import I129fWizard from './I129fWizard'; // make sure this file exists (stub provided below)
+import Link from 'next/link';
 
-export default function I129fGate() {
-  const [paid, setPaid] = useState(false);
+export default function I129fGate({ children }) {
   const [loading, setLoading] = useState(true);
+  const [paid, setPaid] = useState(false);
+  const [err, setErr] = useState('');
 
-  async function refreshStatus() {
-    try {
-      const r = await fetch('/api/payments/status', { cache: 'no-store' });
-      const j = await r.json();
-      setPaid(!!j.paid);
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/payments/status', { cache: 'no-store' });
+        const j = await r.json();
+        if (!cancelled) {
+          setPaid(!!j.paid);
+        }
+      } catch (e) {
+        if (!cancelled) setErr(String(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
-  useEffect(() => { refreshStatus(); }, []);
-
-  if (loading) return <div className="card">Loading…</div>;
+  if (loading) return <div className="card">Checking access…</div>;
+  if (err) return <div className="card" style={{color:'#b91c1c'}}>Error: {err}</div>;
 
   if (!paid) {
     return (
-      <div className="card" style={{ display: 'grid', gap: 16 }}>
-        <h2 style={{ margin: 0 }}>How it works — 3 easy steps</h2>
-        <ol className="small" style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 8 }}>
-          <li><strong>Upload your documents.</strong> We pre-fill as much of the I-129F as possible.</li>
-          <li><strong>Use our assistant.</strong> Clear guidance to finish the remaining fields.</li>
-          <li><strong>Download your packet.</strong> Review and download your completed I-129F PDF.</li>
-        </ol>
-        <div style={{ marginTop: 8 }}>
-          <PayButtons amount="500.00" onPaid={refreshStatus} />
+      <div className="card" style={{display:'grid', gap:8}}>
+        <h2 style={{margin:0}}>Unlock the I-129F tool</h2>
+        <p style={{margin:0}}>
+          Please complete checkout to use the guided form and download the filled PDF.
+        </p>
+        <div>
+          <Link href="/checkout/us/i-129f" className="btn btn-primary">Go to checkout</Link>
         </div>
       </div>
     );
   }
 
-  return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <I129fWizard />
-      {/* <AiHelp />  // keep hidden or add here since paid === true */}
-    </div>
-  );
+  return <>{children}</>;
 }
