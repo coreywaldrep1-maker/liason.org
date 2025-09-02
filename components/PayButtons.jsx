@@ -7,41 +7,65 @@ import { useState } from 'react';
 export default function PayButtons({ amount = '500.00', onPaid }) {
   const [error, setError] = useState('');
 
+  const options = {
+    'client-id': process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID,
+    currency: 'USD',
+    intent: 'capture',
+    'data-funding-allowed': 'card', // show card option if eligible
+    'disable-funding': 'paylater'   // optional
+  };
+
+  async function createOrder() {
+    const r = await fetch('/api/payments/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount, description: 'I-129F Guided Tool' })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Create order failed');
+    return j.id;
+  }
+
+  async function capture(orderID) {
+    const r = await fetch('/api/payments/capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderID })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Capture failed');
+    onPaid?.(); // refresh the gate
+  }
+
   return (
-    <PayPalScriptProvider options={{
-      'client-id': process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID,
-      currency: 'USD',
-      intent: 'capture'
-    }}>
+    <PayPalScriptProvider options={options}>
       <PayPalButtons
         style={{ layout: 'vertical' }}
-        createOrder={(data, actions) => {
-          return actions.order.create({
-            purchase_units: [{
-              amount: { value: amount },
-              description: 'I-129F Guided Tool'
-            }]
-          });
+        createOrder={async () => {
+          try { return await createOrder(); }
+          catch (e) { setError(String(e)); return ''; }
         }}
-        onApprove={async (data, actions) => {
-          try {
-            // Confirm/capture on our server and set cookie
-            const r = await fetch('/api/payments/confirm', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ orderID: data.orderID })
-            });
-            const j = await r.json();
-            if (!j.ok) throw new Error(j.error || 'Confirm failed');
-            // refresh UI
-            onPaid?.();
-          } catch (e) {
-            setError(String(e));
-          }
+        onApprove={async (data) => {
+          try { await capture(data.orderID); }
+          catch (e) { setError(String(e)); }
         }}
         onError={(err) => setError(String(err))}
       />
-      {error && <div className="small" style={{ color: '#b91c1c' }}>{error}</div>}
+      {/* Dedicated Card button (renders only if eligible) */}
+      <PayPalButtons
+        fundingSource="card"
+        style={{ layout: 'vertical' }}
+        createOrder={async () => {
+          try { return await createOrder(); }
+          catch (e) { setError(String(e)); return ''; }
+        }}
+        onApprove={async (data) => {
+          try { await capture(data.orderID); }
+          catch (e) { setError(String(e)); }
+        }}
+        onError={(err) => setError(String(err))}
+      />
+      {error && <div className="small" style={{ color: '#b91c1c', marginTop: 8 }}>{error}</div>}
     </PayPalScriptProvider>
   );
 }
