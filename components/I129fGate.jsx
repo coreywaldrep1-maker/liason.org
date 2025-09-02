@@ -3,18 +3,21 @@
 
 import { useEffect, useState } from 'react';
 import PayButtons from './PayButtons';
-import I129fWizard from './I129fWizard'; // your existing wizard
+import I129fWizard from './I129fWizard'; // make sure this file exists (stub provided below)
 
 export default function I129fGate() {
   const [paid, setPaid] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const refreshStatus = async () => {
-    const r = await fetch('/api/payments/status', { cache: 'no-store' });
-    const j = await r.json();
-    setPaid(!!j.paid);
-    setLoading(false);
-  };
+  async function refreshStatus() {
+    try {
+      const r = await fetch('/api/payments/status', { cache: 'no-store' });
+      const j = await r.json();
+      setPaid(!!j.paid);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => { refreshStatus(); }, []);
 
@@ -36,12 +39,10 @@ export default function I129fGate() {
     );
   }
 
-  // Paid view: wizard + (optionally) AI. Keep AI hidden until paid — it is.
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <I129fWizard />
-      {/* If you have an AI component, render it here (now that paid is true) */}
-      {/* <AiHelp /> */}
+      {/* <AiHelp />  // keep hidden or add here since paid === true */}
     </div>
   );
 }
