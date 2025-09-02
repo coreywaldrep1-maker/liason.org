@@ -1,37 +1,42 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { LANGS, DEFAULT_LANG } from '@/lib/i18n-common';
-import { getLangCookie, setLangCookie } from '@/lib/i18n-client';
+
+function getLang() {
+  const m = document.cookie.match(/(?:^|;\s*)liason_lang=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : 'en';
+}
 
 export default function LanguageSwitcher() {
-  const [lang, setLang] = useState(DEFAULT_LANG);
-  const router = useRouter();
+  const [lang, setLang] = useState('en');
 
-  useEffect(() => {
-    setLang(getLangCookie());
-  }, []);
+  useEffect(() => { setLang(getLang()); }, []);
 
-  const onChange = (e) => {
-    const code = e.target.value;
-    setLang(code);
-    setLangCookie(code);
-    // Re-render server components to pick up new cookie
-    router.refresh();
-  };
+  async function change(e) {
+    const value = e.target.value;
+    setLang(value);
+    await fetch('/api/i18n/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang: value })
+    });
+    // reload so SSR translations apply everywhere
+    window.location.reload();
+  }
 
   return (
-    <select
-      aria-label="Language"
-      value={lang}
-      onChange={onChange}
-      className="small"
-      style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }}
-    >
-      {LANGS.map(l => (
-        <option key={l.code} value={l.code}>{l.label}</option>
-      ))}
+    <select value={lang} onChange={change} aria-label="Language">
+      <option value="en">English</option>
+      <option value="es">Español</option>
+      <option value="fr">Français</option>
+      <option value="de">Deutsch</option>
+      <option value="pt">Português</option>
+      <option value="it">Italiano</option>
+      <option value="zh">中文</option>
+      <option value="ar">العربية</option>
+      <option value="hi">हिन्दी</option>
+      <option value="ru">Русский</option>
+      {/* add/remove as you wish */}
     </select>
   );
 }
