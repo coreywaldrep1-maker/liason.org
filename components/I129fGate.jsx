@@ -2,31 +2,23 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import PayButtons from '@/components/PayButtons';
+import I129fWizard from '@/components/I129fWizard'; // your existing wizard
 
-const TEST_MODE = process.env.NEXT_PUBLIC_TEST_MODE === '1';
-
-export default function I129fGate({ children }) {
+export default function I129fGate() {
   const [loading, setLoading] = useState(true);
   const [paid, setPaid] = useState(false);
-  const [err, setErr] = useState('');
+  const testMode = process.env.NEXT_PUBLIC_I129F_TEST_MODE === '1'; // optional
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        if (TEST_MODE) {
-          if (!cancelled) {
-            setPaid(true);
-            setLoading(false);
-          }
-          return;
-        }
         const r = await fetch('/api/payments/status', { cache: 'no-store' });
         const j = await r.json();
-        if (!cancelled) setPaid(!!j.paid);
-      } catch (e) {
-        if (!cancelled) setErr(String(e));
+        if (!cancelled) setPaid(Boolean(j?.paid));
+      } catch {
+        if (!cancelled) setPaid(false);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -34,20 +26,38 @@ export default function I129fGate({ children }) {
     return () => { cancelled = true; };
   }, []);
 
-  if (loading) return <div className="card">Checking access…</div>;
-  if (err) return <div className="card" style={{color:'#b91c1c'}}>Error: {err}</div>;
+  if (loading) {
+    return <div className="card">Checking access…</div>;
+  }
 
-  if (!paid) {
+  if (!paid && !testMode) {
     return (
-      <div className="card" style={{display:'grid', gap:8}}>
-        <h2 style={{margin:0}}>Unlock the I-129F tool</h2>
-        <p style={{margin:0}}>Please complete checkout to use the guided form and download the filled PDF.</p>
+      <div className="card" style={{ display: 'grid', gap: 12 }}>
+        <h2 style={{ margin: 0 }}>Unlock the I-129F tool</h2>
+        <p className="small" style={{ margin: 0 }}>
+          Get the guided experience and downloadable, pre-filled packet.
+        </p>
         <div>
-          <Link href="/checkout/us/i-129f" className="btn btn-primary">Go to checkout</Link>
+          <PayButtons
+            amount="500.00"
+            onApprove={() => {
+              setPaid(true);
+            }}
+          />
         </div>
       </div>
     );
   }
 
-  return <>{children}</>;
+  // Paid OR test mode: show the tool
+  return (
+    <>
+      {testMode && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="small">Test mode is ON.</div>
+        </div>
+      )}
+      <I129fWizard />
+    </>
+  );
 }
