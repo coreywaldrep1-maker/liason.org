@@ -1,43 +1,22 @@
 // app/api/i129f/fields/route.js
+export const runtime = 'nodejs';
+
 import { NextResponse } from 'next/server';
-import { PDFDocument } from 'pdf-lib';
-import { promises as fs } from 'fs';
+import { readFile } from 'fs/promises';
 import path from 'path';
+import { PDFDocument } from 'pdf-lib';
 
-export const dynamic = 'force-dynamic';
+const TEMPLATE_FILE = 'i-129f.pdf';
+const TEMPLATE_PATH = path.join(process.cwd(), 'public', 'forms', TEMPLATE_FILE);
 
-export async function GET(request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const file = searchParams.get('file') || 'i-129f.pdf';
-
-    const pdfPath = path.join(process.cwd(), 'public', 'forms', file);
-    const bytes = await fs.readFile(pdfPath);
-
-    // Quick heuristic to detect XFA (many USCIS forms use XFA, which pdf-lib can't read for fields)
-    const isXfa = Buffer.from(bytes).includes(Buffer.from('/XFA'));
-
-    // IMPORTANT: ignoreEncryption allows loading encrypted PDFs
+    const bytes = await readFile(TEMPLATE_PATH);
     const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-
     const form = pdfDoc.getForm();
     const fields = form.getFields().map(f => f.getName());
-
-    return NextResponse.json({
-      ok: true,
-      file,
-      count: fields.length,
-      isXfaLikely: isXfa,
-      note:
-        fields.length === 0
-          ? 'No AcroForm fields were found. If isXfaLikely is true, this PDF is probably XFA-based, which pdf-lib cannot read for fields.'
-          : undefined,
-      fields,
-    });
-  } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err?.message || String(err) },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: true, count: fields.length, fields });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
