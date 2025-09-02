@@ -1,111 +1,160 @@
 // app/api/i129f/route.js
+// Streams a filled I-129F PDF using your AcroForm template + latest saved data.
+
+export const runtime = 'nodejs';
+
 import { NextResponse } from 'next/server';
+import { readFile } from 'fs/promises';
+import path from 'path';
 import { PDFDocument } from 'pdf-lib';
-import { I129F_FIELD_MAP as MAP } from '@/lib/i129fFieldMap';
+import { neon } from '@neondatabase/serverless';
+import * as jose from 'jose';
 
-// Location of your finalized AcroForm:
-// Put your finished PDF at public/forms/i-129f.pdf
-const PDF_PATH = `${process.cwd()}/public/forms/i-129f.pdf`;
+const sql = neon(process.env.DATABASE_URL);
 
-// --- Helpers ---------------------------------------------------------------
+// CHANGE THIS to match the actual filename you put under /public/forms
+// e.g. 'USCIS I-129F 2025.pdf'  or  'i-129f.pdf'
+const TEMPLATE_FILE = 'USCIS I-129F 2025.pdf';
+const TEMPLATE_PATH = path.join(process.cwd(), 'public', 'forms', TEMPLATE_FILE);
 
-async function loadPdf() {
-  const fs = await import('fs/promises');
-  const bytes = await fs.readFile(PDF_PATH);
-  // ignoreEncryption true: safe if the file has an “encryption flag” but no password
-  return PDFDocument.load(bytes, { ignoreEncryption: true });
+// tiny cookie getter (works in Node runtime)
+function getCookie(req, name) {
+  const raw = req.headers.get('cookie') || '';
+  const found = raw.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
+  return found ? decodeURIComponent(found.split('=')[1]) : null;
 }
 
-function setTextSafe(form, fieldName, value) {
-  if (!value && value !== 0) return;
+// read latest saved JSON for this user (if any)
+async function getLatestFormData(request) {
   try {
-    const f = form.getTextField(fieldName);
-    f.setText(String(value));
+    const token = getCookie(request, 'liason_token');
+    if (!token || !process.env.JWT_SECRET) return null;
+
+    const { payload } = await jose.jwtVerify(
+      token,
+      new TextEncoder().encode(process.env.JWT_SECRET)
+    );
+    const userId = payload?.sub;
+    if (!userId) return null;
+
+    // Adjust table/column names if yours differ
+    // Expecting a table like: i129f_forms(user_id UUID, data JSONB, updated_at TIMESTAMPTZ default now())
+    const rows = await sql`
+      SELECT data
+      FROM i129f_forms
+      WHERE user_id = ${userId}
+      ORDER BY updated_at DESC NULLS LAST
+      LIMIT 1
+    `;
+    return rows[0]?.data ?? null;
   } catch {
-    // ignore missing field
+    return null;
   }
 }
 
-function setCheckSafe(form, fieldName, checked) {
+// Safe, duck-typed field filler for pdf-lib fields
+function fillField(field, value) {
+  if (value === undefined || value === null) return;
+
+  // normalize booleans for checkboxes / radios
+  const yesish = v => (
+    v === true || v === 'true' || v === 1 || v === '1' ||
+    v === 'Y' || v === 'y' || v === 'Yes' || v === 'yes' || v === 'on'
+  );
+
   try {
-    const f = form.getCheckBox(fieldName);
-    if (checked) f.check();
-    else f.uncheck();
+    // Text field?
+    if (typeof field.setText === 'function') {
+      field.setText(String(value));
+      return;
+    }
+    // Dropdown / option list?
+    if (typeof field.select === 'function') {
+      if (Array.isArray(value)) {
+        // OptionList may accept multiple; select first fallback
+        field.select(...value.map(String));
+      } else {
+        field.select(String(value));
+      }
+      return;
+    }
+    // Checkbox?
+    if (typeof field.mark === 'function' && typeof field.unmark === 'function') {
+      if (yesish(value)) field.mark(); else field.unmark();
+      return;
+    }
+    // Radio group? (pdf-lib exposes select for radios too)
+    if (typeof field.select === 'function') {
+      field.select(String(value));
+      return;
+    }
   } catch {
-    // if it’s actually a radio group, try selecting when true
-    if (checked) {
-      try {
-        const r = form.getRadioGroup(fieldName);
-        // If your radio has multiple options, you can set a specific one later.
-        // Here, we just “select the group” by picking the first option name.
-        const opts = r.getOptions();
-        if (opts && opts.length) r.select(opts[0]);
-      } catch {
-        // ignore
+    // ignore single field errors so others still fill
+  }
+}
+
+// Optional explicit mapping for aliases (only needed if your PDF field names
+// don’t exactly match your JSON keys). You can add rows like:
+// 'Petitioner_LastName': 'petitioner.lastName',
+const MAPPING = {
+  // 'PDF field name' : 'json.path.like.this',
+};
+
+// resolve dot paths from JSON (e.g. "petitioner.address.city")
+function getByPath(obj, dotPath) {
+  if (!dotPath) return undefined;
+  const parts = dotPath.split('.');
+  let cur = obj;
+  for (const p of parts) {
+    if (cur && typeof cur === 'object' && p in cur) cur = cur[p];
+    else return undefined;
+  }
+  return cur;
+}
+
+export async function GET(request) {
+  try {
+    // 1) Load the template (AcroForm) from /public/forms
+    const templateBytes = await readFile(TEMPLATE_PATH);
+    const pdfDoc = await PDFDocument.load(templateBytes, { ignoreEncryption: true });
+
+    const form = pdfDoc.getForm();
+
+    // 2) Pull the latest saved JSON for the signed-in user (if available)
+    const data = (await getLatestFormData(request)) || {};
+
+    // 3) Fill by name match, with optional alias mapping fallback
+    const fields = form.getFields();
+    for (const f of fields) {
+      const name = f.getName();
+
+      // Try exact key match first
+      let val = getByPath(data, name);
+
+      // If no direct match, try alias mapping to a dot-path
+      if (val === undefined && MAPPING[name]) {
+        val = getByPath(data, MAPPING[name]);
+      }
+
+      // Fill if we found a value
+      if (val !== undefined) {
+        fillField(f, val);
       }
     }
-  }
-}
 
-function applyData(form, data) {
-  // Text fields
-  for (const [key, pdfName] of Object.entries(MAP.text)) {
-    setTextSafe(form, pdfName, data[key]);
-  }
-  // Checkboxes/radios
-  for (const [key, pdfName] of Object.entries(MAP.checks)) {
-    const val = data[key];
-    if (typeof val === 'boolean') setCheckSafe(form, pdfName, val);
-    else if (val === 'yes' || val === 'on' || val === 'true' || val === '1') setCheckSafe(form, pdfName, true);
-    else setCheckSafe(form, pdfName, false);
-  }
-}
+    // 4) Flatten so it looks final when downloaded
+    form.flatten();
 
-// --- Routes ----------------------------------------------------------------
-
-// GET  /api/i129f?fields=1   -> quick dump of field names
-export async function GET(req) {
-  const { searchParams } = new URL(req.url);
-  const wantFields = searchParams.get('fields');
-
-  try {
-    const pdfDoc = await loadPdf();
-    const form = pdfDoc.getForm();
-
-    if (wantFields) {
-      const names = form.getFields().map(f => f.getName());
-      return NextResponse.json({ ok: true, count: names.length, fields: names });
-    }
-
-    return NextResponse.json({ ok: true, message: 'I-129F PDF endpoint' });
-  } catch (err) {
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
-  }
-}
-
-// POST /api/i129f  with JSON: { data: {...} } -> returns filled PDF
-export async function POST(req) {
-  try {
-    const body = await req.json().catch(() => ({}));
-    const data = body?.data || {};
-
-    const pdfDoc = await loadPdf();
-    const form = pdfDoc.getForm();
-
-    applyData(form, data);
-
-    // (Optional) flatten so text is embedded and fields aren’t editable:
-    // form.flatten();
-
-    const bytes = await pdfDoc.save();
-    return new NextResponse(Buffer.from(bytes), {
-      status: 200,
+    const out = await pdfDoc.save();
+    return new NextResponse(out, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': 'attachment; filename="i-129f-filled.pdf"',
+        'Cache-Control': 'no-store',
       },
     });
-  } catch (err) {
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+  } catch (e) {
+    // Helpful error for debugging if anything goes wrong
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
