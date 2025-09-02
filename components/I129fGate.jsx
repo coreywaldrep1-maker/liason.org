@@ -1,14 +1,14 @@
-// components/I129fGate.jsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import PayButtons from '@/components/PayButtons';
-import I129fWizard from '@/components/I129fWizard'; // your existing wizard
+import I129fWizard from '@/components/I129fWizard';
+import AiHelp from '@/components/AiHelp';
 
 export default function I129fGate() {
   const [loading, setLoading] = useState(true);
   const [paid, setPaid] = useState(false);
-  const testMode = process.env.NEXT_PUBLIC_I129F_TEST_MODE === '1'; // optional
+  const payRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -26,38 +26,46 @@ export default function I129fGate() {
     return () => { cancelled = true; };
   }, []);
 
-  if (loading) {
-    return <div className="card">Checking access…</div>;
-  }
+  if (loading) return <div className="card">Checking access…</div>;
 
-  if (!paid && !testMode) {
+  if (!paid) {
     return (
-      <div className="card" style={{ display: 'grid', gap: 12 }}>
-        <h2 style={{ margin: 0 }}>Unlock the I-129F tool</h2>
-        <p className="small" style={{ margin: 0 }}>
-          Get the guided experience and downloadable, pre-filled packet.
-        </p>
-        <div>
+      <div style={{display:'grid', gap:16}}>
+        <section className="card" style={{display:'grid', gap:12}}>
+          <h2 style={{margin:0}}>How it works — 3 easy steps</h2>
+          <ol className="small" style={{margin:'0 0 4px 18px'}}>
+            <li><strong>Guided prompts in your language.</strong> Answer simple questions on any device; we translate pages and instructions for you.</li>
+            <li><strong>Helpful AI at every step.</strong> Get clear explanations, examples, and help crafting your story.</li>
+            <li><strong>Download your packet.</strong> We pre-fill the I-129F and let you review & export a ready-to-print PDF.</li>
+          </ol>
+          <p className="small" style={{margin:0}}>
+            Most people finish in ~15 minutes — no spreadsheets, no guesswork, less stress.
+          </p>
+
+          <button
+            className="btn btn-primary"
+            onClick={() => payRef.current?.scrollIntoView({ behavior:'smooth', block:'start' })}
+          >
+            Continue to checkout
+          </button>
+        </section>
+
+        <section ref={payRef} className="card" style={{display:'grid', gap:8}}>
+          <h3 style={{margin:0}}>Checkout</h3>
           <PayButtons
             amount="500.00"
-            onApprove={() => {
-              setPaid(true);
-            }}
+            onApprove={() => setPaid(true)}
           />
-        </div>
+        </section>
       </div>
     );
   }
 
-  // Paid OR test mode: show the tool
+  // Paid view
   return (
-    <>
-      {testMode && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div className="small">Test mode is ON.</div>
-        </div>
-      )}
+    <div style={{display:'grid', gap:16}}>
       <I129fWizard />
-    </>
+      <AiHelp />
+    </div>
   );
 }
