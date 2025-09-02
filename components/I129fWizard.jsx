@@ -1,263 +1,190 @@
+// components/I129fWizard.jsx
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
-import { I129F } from '@/lib/i129f-schema';
+import { useEffect, useState } from 'react';
 
-// --- helpers: get/set nested values like "petitioner.name.family"
-function getByPath(obj, path) {
-  if (!path) return undefined;
-  return path.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), obj);
-}
-function setByPath(draft, path, value) {
-  const segs = path.split('.');
-  let ptr = draft;
-  for (let i = 0; i < segs.length - 1; i++) {
-    const k = segs[i];
-    if (!ptr[k] || typeof ptr[k] !== 'object') ptr[k] = {};
-    ptr = ptr[k];
-  }
-  ptr[segs[segs.length - 1]] = value;
-}
+export default function I129fWizard() {
+  const [step, setStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-export default function I129fWizard({ initialAnswers = {} }) {
-  const [answers, setAnswers] = useState(initialAnswers);
-  const [cursor, setCursor] = useState({ s: 0, g: 0 }); // section index, group index
-  const section = I129F.sections[cursor.s];
-  const group = section.groups[cursor.g];
+  // keep key names stable; we'll map them to PDF later
+  const [form, setForm] = useState({
+    petitioner: {
+      aNumber: '',
+      uscisAccount: '',
+      ssn: '',
+      lastName: '',
+      firstName: '',
+      middleName: ''
+    },
+    classification: {
+      k1: false,
+      k3: false,
+      i130Filed: null // true/false/null
+    },
+    mailing: {
+      inCareOf: '',
+      street: '',
+      unitType: '',   // 'Apt' | 'Ste' | 'Flr'
+      unitNumber: '',
+      city: '',
+      state: '',
+      zip: '',
+      province: '',
+      postalCode: '',
+      country: ''
+    },
+    mailingSameAsPhysical: true
+  });
 
-  const steps = useMemo(() => {
-    const arr = [];
-    I129F.sections.forEach((sec, si) => {
-      sec.groups.forEach((grp, gi) => {
-        arr.push({ s: si, g: gi, title: `${sec.title} — ${grp.title}` });
-      });
-    });
-    return arr;
+  // Load saved data on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch('/api/i129f/data', { cache: 'no-store' });
+        const j = await r.json();
+        if (j.ok && j.data) {
+          setForm(prev => ({ ...prev, ...j.data }));
+        }
+      } catch (_) {}
+      setLoading(false);
+    })();
   }, []);
 
-  const stepIndex = steps.findIndex((x) => x.s === cursor.s && x.g === cursor.g);
-  const isFirst = stepIndex <= 0;
-  const isLast = stepIndex >= steps.length - 1;
-
-  const goNext = useCallback(() => {
-    if (isLast) return;
-    const nxt = steps[stepIndex + 1];
-    setCursor({ s: nxt.s, g: nxt.g });
-  }, [isLast, stepIndex, steps]);
-
-  const goBack = useCallback(() => {
-    if (isFirst) return;
-    const prev = steps[stepIndex - 1];
-    setCursor({ s: prev.s, g: prev.g });
-  }, [isFirst, stepIndex, steps]);
-
-  // --- Save progress to your API
-  const onSave = useCallback(async () => {
-    try {
-      const res = await fetch('/api/i129f/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers })
-      });
-      if (!res.ok) throw new Error('Save failed');
-      alert('Progress saved.');
-    } catch (e) {
-      alert('Could not save progress.');
-    }
-  }, [answers]);
-
-  // --- Basic condition handler (showIf supports equality on simple keys)
-  function isVisible(fieldOrGroup) {
-    if (!fieldOrGroup?.showIf) return true;
-    const cond = fieldOrGroup.showIf;
-    return Object.entries(cond).every(([k, v]) => {
-      const current = getByPath(answers, k);
-      return current === v;
-    });
-  }
-
-  function onFieldChange(field, value, idx /* for repeaters */) {
-    setAnswers((prev) => {
-      const draft = structuredClone(prev);
-      if (group.repeat && typeof idx === 'number') {
-        const key = group.id;
-        const rows = Array.isArray(prev[key]) ? structuredClone(prev[key]) : [];
-        rows[idx] = rows[idx] || {};
-        rows[idx][field.key] = value;
-        draft[key] = rows;
-      } else {
-        setByPath(draft, field.key, value);
+  const update = (path, val) => {
+    setForm(prev => {
+      const parts = path.split('.');
+      const next = { ...prev };
+      let cur = next;
+      for (let i = 0; i < parts.length - 1; i++) {
+        const p = parts[i];
+        cur[p] = Array.isArray(cur[p]) ? [...cur[p]] : { ...(cur[p] || {}) };
+        cur = cur[p];
       }
-      return draft;
+      cur[parts[parts.length - 1]] = val;
+      return next;
     });
+  };
+
+  const save = async () => {
+    setSaving(true);
+    const r = await fetch('/api/i129f/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    const j = await r.json();
+    setSaving(false);
+    if (!j.ok) alert('Save failed: ' + j.error);
+    else alert('Saved!');
+  };
+
+  if (loading) {
+    return <div className="card">Loading…</div>;
   }
 
   return (
-    <div className="card" style={{ padding: 20, display: 'grid', gap: 16 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <span className="small" style={{ opacity: 0.8 }}>
-          Step {stepIndex + 1} of {steps.length}
-        </span>
-        <strong>{section.title}</strong>
-        <span className="small" style={{ opacity: 0.8 }}>› {group.title}</span>
-      </div>
+    <div className="card" style={{ display: 'grid', gap: 16 }}>
+      <h2 style={{ margin: 0 }}>I-129F Wizard</h2>
 
-      {group.help && <p className="small" style={{ opacity: 0.8, marginTop: -4 }}>{group.help}</p>}
-
-      {/* Group body */}
-      <div style={{ display: 'grid', gap: 12 }}>
-        {/* Repeater groups */}
-        {group.repeat ? (
-          <Repeater
-            group={group}
-            rows={answers[group.id] || []}
-            onChange={(idx, field, val) => onFieldChange(field, val, idx)}
+      {step === 0 && (
+        <section style={{ display: 'grid', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>Part 1 — Your Information</h3>
+          <div className="small">Alien Registration Number (if any)</div>
+          <input
+            value={form.petitioner.aNumber || ''}
+            onChange={e => update('petitioner.aNumber', e.target.value)}
+            placeholder="A-number"
           />
-        ) : (
-          (group.fields || [])
-            .filter(isVisible)
-            .map((f) => (
-              <FieldRow
-                key={f.key}
-                field={f}
-                value={getByPath(answers, f.key)}
-                onChange={(val) => onFieldChange(f, val)}
-              />
-            ))
-        )}
-      </div>
-
-      {/* Navigation & Actions */}
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 4 }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn" onClick={goBack} disabled={isFirst}>Back</button>
-          <button className="btn" onClick={goNext} disabled={isLast}>Next</button>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn" onClick={onSave}>Save progress</button>
-          <a className="btn btn-primary" href="/api/i129f?download=pdf">Download draft PDF</a>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** One row/field with inline help */
-function FieldRow({ field, value, onChange }) {
-  if (!field) return null;
-  return (
-    <label className="small" style={{ display: 'grid', gap: 6 }}>
-      <span>{field.label}</span>
-      <FieldInput field={field} value={value} onChange={onChange} />
-      {field.help && <span className="micro" style={{ opacity: 0.7 }}>{field.help}</span>}
-    </label>
-  );
-}
-
-/** Renders an individual input by type */
-function FieldInput({ field, value, onChange }) {
-  const common = {
-    style: { width: '100%', padding: 8, border: '1px solid #e2e8f0', borderRadius: 8 },
-    value: value ?? '',
-    onChange: (e) => onChange(e.target.value)
-  };
-
-  switch (field.type) {
-    case 'textarea':
-      return <textarea {...common} rows={4} />;
-    case 'radio':
-      return (
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          {(field.options || []).map((opt) => (
-            <label key={opt.value} className="small" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-              <input
-                type="radio"
-                name={field.key}
-                value={opt.value}
-                checked={value === opt.value}
-                onChange={() => onChange(opt.value)}
-              />
-              {opt.label}
-            </label>
-          ))}
-        </div>
-      );
-    case 'select':
-      return (
-        <select
-          {...common}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          {(field.options || []).map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      );
-    case 'number':
-      return <input {...common} type="number" />;
-    case 'email':
-      return <input {...common} type="email" />;
-    case 'tel':
-      return <input {...common} type="tel" />;
-    case 'date':
-      return <input {...common} type="date" />;
-    default:
-      // text, state, country fallback to text inputs (you can swap to real pickers later)
-      return <input {...common} type="text" />;
-  }
-}
-
-/** Repeater (add/remove rows) */
-function Repeater({ group, rows, onChange }) {
-  const [localRows, setLocalRows] = useState(rows.length ? rows : [{}]);
-
-  const addRow = () => {
-    const max = group.repeat?.max ?? 99;
-    if (localRows.length >= max) return;
-    setLocalRows((r) => [...r, {}]);
-  };
-  const removeRow = (idx) => {
-    const min = group.repeat?.min ?? 0;
-    if (localRows.length <= Math.max(min, 1)) return;
-    setLocalRows((r) => r.filter((_, i) => i !== idx));
-  };
-
-  // reflect to parent on field change
-  const handleField = (idx, field, val) => {
-    const next = localRows.map((row, i) => (i === idx ? { ...row, [field.key]: val } : row));
-    setLocalRows(next);
-    onChange(idx, field, val);
-  };
-
-  return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      {localRows.map((row, idx) => (
-        <div key={idx} className="card" style={{ padding: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-            <strong className="small">{group.title} #{idx + 1}</strong>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {localRows.length > (group.repeat?.min ?? 0) && (
-                <button type="button" className="small" onClick={() => removeRow(idx)} style={{ textDecoration: 'underline' }}>
-                  Remove
-                </button>
-              )}
-            </div>
-          </div>
-          <div style={{ display: 'grid', gap: 10 }}>
-            {(group.itemFields || []).map((f) => (
-              <FieldRow
-                key={f.key}
-                field={f}
-                value={row[f.key]}
-                onChange={(val) => handleField(idx, f, val)}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
-      {localRows.length < (group.repeat?.max ?? 99) && (
-        <button type="button" className="btn" onClick={addRow}>Add another</button>
+          <div className="small">USCIS Online Account Number (if any)</div>
+          <input
+            value={form.petitioner.uscisAccount || ''}
+            onChange={e => update('petitioner.uscisAccount', e.target.value)}
+            placeholder="USCIS Online Account Number"
+          />
+          <div className="small">U.S. Social Security Number (if any)</div>
+          <input
+            value={form.petitioner.ssn || ''}
+            onChange={e => update('petitioner.ssn', e.target.value)}
+            placeholder="SSN"
+          />
+          <div className="small">Family Name (Last)</div>
+          <input
+            value={form.petitioner.lastName || ''}
+            onChange={e => update('petitioner.lastName', e.target.value)}
+            placeholder="Last name"
+          />
+          <div className="small">Given Name (First)</div>
+          <input
+            value={form.petitioner.firstName || ''}
+            onChange={e => update('petitioner.firstName', e.target.value)}
+            placeholder="First name"
+          />
+          <div className="small">Middle Name</div>
+          <input
+            value={form.petitioner.middleName || ''}
+            onChange={e => update('petitioner.middleName', e.target.value)}
+            placeholder="Middle name"
+          />
+        </section>
       )}
+
+      {step === 1 && (
+        <section style={{ display: 'grid', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>Classification</h3>
+          <label><input type="checkbox" checked={!!form.classification.k1} onChange={e => update('classification.k1', e.target.checked)} /> K-1 (Fiancé(e))</label>
+          <label><input type="checkbox" checked={!!form.classification.k3} onChange={e => update('classification.k3', e.target.checked)} /> K-3 (Spouse)</label>
+
+          <div className="small">If K-3, did you file Form I-130?</div>
+          <div style={{ display:'flex', gap:12 }}>
+            <label><input type="radio" name="i130Filed" checked={form.classification.i130Filed === true} onChange={() => update('classification.i130Filed', true)} /> Yes</label>
+            <label><input type="radio" name="i130Filed" checked={form.classification.i130Filed === false} onChange={() => update('classification.i130Filed', false)} /> No</label>
+            <label><input type="radio" name="i130Filed" checked={form.classification.i130Filed === null} onChange={() => update('classification.i130Filed', null)} /> N/A</label>
+          </div>
+        </section>
+      )}
+
+      {step === 2 && (
+        <section style={{ display: 'grid', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>Mailing Address</h3>
+          <input placeholder="In care of" value={form.mailing.inCareOf || ''} onChange={e => update('mailing.inCareOf', e.target.value)} />
+          <input placeholder="Street number and name" value={form.mailing.street || ''} onChange={e => update('mailing.street', e.target.value)} />
+          <div style={{ display:'flex', gap:8 }}>
+            <select value={form.mailing.unitType || ''} onChange={e => update('mailing.unitType', e.target.value)}>
+              <option value="">— Unit type —</option>
+              <option value="Apt">Apt</option>
+              <option value="Ste">Ste</option>
+              <option value="Flr">Flr</option>
+            </select>
+            <input placeholder="Unit #" value={form.mailing.unitNumber || ''} onChange={e => update('mailing.unitNumber', e.target.value)} />
+          </div>
+          <input placeholder="City or Town" value={form.mailing.city || ''} onChange={e => update('mailing.city', e.target.value)} />
+          <input placeholder="State" value={form.mailing.state || ''} onChange={e => update('mailing.state', e.target.value)} />
+          <input placeholder="ZIP" value={form.mailing.zip || ''} onChange={e => update('mailing.zip', e.target.value)} />
+          <input placeholder="Province" value={form.mailing.province || ''} onChange={e => update('mailing.province', e.target.value)} />
+          <input placeholder="Postal Code" value={form.mailing.postalCode || ''} onChange={e => update('mailing.postalCode', e.target.value)} />
+          <input placeholder="Country" value={form.mailing.country || ''} onChange={e => update('mailing.country', e.target.value)} />
+          <label style={{ marginTop: 6 }}>
+            <input type="checkbox" checked={!!form.mailingSameAsPhysical} onChange={e => update('mailingSameAsPhysical', e.target.checked)} />
+            {' '}Mailing address is the same as my physical address
+          </label>
+        </section>
+      )}
+
+      {/* Controls */}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+        <button type="button" className="btn" onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0}>Back</button>
+        <div style={{ display:'flex', gap:8 }}>
+          <button type="button" className="btn" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save progress'}</button>
+          <button type="button" className="btn btn-primary" onClick={() => setStep(s => Math.min(2, s + 1))} disabled={step === 2}>Next</button>
+        </div>
+      </div>
+
+      {/* Download */}
+      <div style={{ textAlign:'right' }}>
+        <a className="btn" href="/api/i129f">Download Draft I-129F (PDF)</a>
+      </div>
     </div>
   );
 }
