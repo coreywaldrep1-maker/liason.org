@@ -1,38 +1,46 @@
-import { NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
-import { jwtVerify } from 'jose';
-
+// app/api/payments/status/route.js
 export const runtime = 'edge';
 
-const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+import { NextResponse } from 'next/server';
+import { neon } from '@neondatabase/serverless';
+import * as jose from 'jose';
 
-async function getUserFromCookie(req) {
-  const cookie = req.headers.get('cookie') || '';
-  const match = cookie.match(/(?:^|;\s*)liason_token=([^;]+)/);
-  if (!match) return null;
-  try {
-    const { payload } = await jwtVerify(decodeURIComponent(match[1]), secret);
-    return payload?.uid || null;
-  } catch {
-    return null;
-  }
+const sql = neon(process.env.DATABASE_URL);
+
+// tiny cookie parser (works in Edge runtime)
+function getCookie(req, name) {
+  const raw = req.headers.get('cookie') || '';
+  const found = raw.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
+  return found ? decodeURIComponent(found.split('=')[1]) : null;
 }
 
-export async function GET(req) {
-  try {
-    const uid = await getUserFromCookie(req);
-    if (!uid) return NextResponse.json({ ok: true, paid: false });
+export async function GET(request) {
+  let paid = false;
 
-    const rows = await sql`
-      SELECT paid
-      FROM payments
-      WHERE user_id = ${uid} AND product = 'i129f'
-      ORDER BY created_at DESC
-      LIMIT 1
-    `;
-    const paid = rows.length > 0 ? !!rows[0].paid : false;
-    return NextResponse.json({ ok: true, paid });
-  } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+  // 1) quick cookie check (temporary fallback)
+  if (getCookie(request, 'i129f_paid') === 'yes') {
+    paid = true;
   }
+
+  // 2) if logged in, check DB entitlement
+  try {
+    const token = getCookie(request, 'liason_token');
+    if (token && process.env.JWT_SECRET) {
+      const { payload } = await jose.jwtVerify(
+        token,
+        new TextEncoder().encode(process.env.JWT_SECRET)
+      );
+      const userId = payload?.sub;
+      if (userId) {
+        const rows = await sql`
+          SELECT 1 FROM i129f_access WHERE user_id = ${userId} LIMIT 1
+        `;
+        if (rows.length > 0) paid = true;
+      }
+    }
+  } catch {
+    // ignore and fall back to cookie only
+  }
+
+  return NextResponse.json({ paid });
 }
