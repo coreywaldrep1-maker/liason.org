@@ -1,10 +1,11 @@
 // app/api/payments/status/route.js
-export const runtime = 'edge';
-
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 
-export async function GET(request) {
-  const cookie = request.headers.get('cookie') || '';
-  const paid = cookie.split(';').map(s => s.trim()).some(s => s.startsWith('liason_paid_i129f=1'));
-  return NextResponse.json({ ok: true, paid });
+export const dynamic = 'force-dynamic';
+
+export async function GET() {
+  const c = cookies();
+  const paid = c.get('i129f_paid')?.value === '1';
+  return NextResponse.json({ paid });
 }
