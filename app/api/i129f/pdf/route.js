@@ -1,67 +1,96 @@
+// app/api/i129f/pdf/route.js
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { neon } from '@neondatabase/serverless';
-import jwt from 'jsonwebtoken';
 import { PDFDocument } from 'pdf-lib';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { verifyJWT } from '@/lib/auth';
 
 const sql = neon(process.env.DATABASE_URL);
-const COOKIE = 'liason_token';
+const PDF_PATH = path.join(process.cwd(), 'public', 'forms', 'i-129f.pdf');
 
-function requireUser(req) {
-  const cookie = req.headers.get('cookie') || '';
-  const m = cookie.match(new RegExp(`${COOKIE}=([^;]+)`));
-  if (!m) throw new Error('Not authenticated');
-  const token = decodeURIComponent(m[1]);
-  const payload = jwt.verify(token, process.env.JWT_SECRET);
-  return { id: payload.sub || payload.id };
+// minimal mapping (expand as you go)
+const MAP = {
+  // Petitioner (Part 1)
+  'Pt1Line6a_FamilyName': d => d?.petitioner?.lastName,
+  'Pt1Line6b_GivenName':  d => d?.petitioner?.firstName,
+  'Pt1Line6c_MiddleName': d => d?.petitioner?.middleName,
+
+  // Mailing (Part 1 Item 8)
+  'Pt1Line8_InCareofName':    d => d?.mailing?.inCareOf || '',
+  'Pt1Line8_StreetNumberName':d => d?.mailing?.street,
+  'Pt1Line8_Unit_p0_ch3':     d => d?.mailing?.unitType, // Apt/Ste/Flr (often a dropdown/checkbox group)
+  'Pt1Line8_AptSteFlrNumber': d => d?.mailing?.unitNum,
+  'Pt1Line8_CityOrTown':      d => d?.mailing?.city,
+  'Pt1Line8_State':           d => d?.mailing?.state,
+  'Pt1Line8_ZipCode':         d => d?.mailing?.zip,
+  'Pt1Line8_Province':        d => d?.mailing?.province,
+  'Pt1Line8_PostalCode':      d => d?.mailing?.postal,
+  'Pt1Line8_Country':         d => d?.mailing?.country,
+
+  // Beneficiary (sample)
+  'Pt2Line1a_FamilyName': d => d?.beneficiary?.lastName,
+  'Pt2Line1b_GivenName':  d => d?.beneficiary?.firstName,
+  'Pt2Line1c_MiddleName': d => d?.beneficiary?.middleName,
+};
+
+// helper to set value if the field exists
+function setField(form, name, val) {
+  if (val == null) return;
+  try {
+    // Try text first
+    const tf = form.getTextField(name);
+    tf.setText(String(val));
+    return;
+  } catch {}
+  try {
+    // Then checkbox/radio
+    const cb = form.getCheckBox(name);
+    if (val === true || val === 'Y' || val === 'Yes' || val === 'on' || val === 1) cb.check();
+    else cb.uncheck();
+    return;
+  } catch {}
+  // If it's a dropdown
+  try {
+    const dd = form.getDropdown(name);
+    dd.select(String(val));
+    return;
+  } catch {}
+  // Silently ignore unknown/missing fields
 }
 
-export async function GET(request) {
+export async function GET() {
   try {
-    const { id } = requireUser(request);
-    const rows = await sql`SELECT data FROM i129f_drafts WHERE user_id = ${id}`;
-    const formData = rows[0]?.data || {};
+    const token = cookies().get('liason_token')?.value;
+    if (!token) return NextResponse.json({ ok:false, error:'Not authenticated' }, { status:401 });
+    const user = await verifyJWT(token).catch(() => null);
+    if (!user) return NextResponse.json({ ok:false, error:'Bad token' }, { status:401 });
 
-    const filePath = path.join(process.cwd(), 'public', 'forms', 'i-129f.pdf');
-    const bytes = await fs.readFile(filePath);
-    const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-    pdfDoc.catalog.set(PDFDocument.PDFName.of('NeedAppearances'), pdfDoc.context.obj(true)); // helps appearances
+    const rows = await sql`SELECT data FROM i129f_entries WHERE user_id = ${user.id}::uuid LIMIT 1`;
+    const data = rows[0]?.data || {};
 
-    const form = pdfDoc.getForm();
-    const mapping = toPdfFields(formData);
+    const bytes = await fs.readFile(PDF_PATH);
+    const pdf = await PDFDocument.load(bytes, { updateFieldAppearances: true, ignoreEncryption: true });
+    const form = pdf.getForm();
 
-    Object.entries(mapping).forEach(([name, val]) => {
-      try {
-        const f = form.getFieldMaybe(name);
-        if (!f) return;
-        // checkbox/radio vs text heuristic
-        if (typeof f.setChecked === 'function') {
-          f.setChecked(val === 'Yes' || val === true);
-        } else if (typeof f.select === 'function') {
-          f.select(String(val ?? ''));
-        } else if (typeof f.setText === 'function') {
-          f.setText(String(val ?? ''));
-        }
-        // keep editable (do not flatten)
-      } catch {}
-    });
+    for (const [name, fn] of Object.entries(MAP)) {
+      const val = typeof fn === 'function' ? fn(data) : data[fn];
+      setField(form, name, val);
+    }
 
-    const out = await pdfDoc.save();
-    return new NextResponse(out, {
+    // do NOT flatten, so users can edit the AcroForm after download
+    const out = await pdf.save();
+    return new Response(out, {
+      status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="i-129f.pdf"',
+        'Content-Disposition': 'attachment; filename="I-129F-draft.pdf"'
       }
     });
   } catch (e) {
-    return NextResponse.json({ ok:false, error:String(e) }, { status: e.message.includes('Not authenticated') ? 401 : 500 });
+    return NextResponse.json({ ok:false, error:String(e) }, { status:500 });
   }
 }
-
-// tiny helper: pdf-lib v2.0 doesn't expose getFieldMaybe; shim it
-PDFDocument.prototype.getForm = function() {
-  return this.form || (this.form = this.context.lookup(this.catalog.get(PDFDocument.PDFName.of('AcroForm'))));
-};
