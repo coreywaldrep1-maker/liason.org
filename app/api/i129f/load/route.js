@@ -1,19 +1,25 @@
 import { NextResponse } from 'next/server';
-import { neon, neonConfig } from '@neondatabase/serverless';
-import { getUserFromCookie } from '@/lib/auth';
+import { neon } from '@neondatabase/serverless';
+import jwt from 'jsonwebtoken';
 
-export const runtime = 'nodejs';
-neonConfig.fetchConnectionCache = true;
 const sql = neon(process.env.DATABASE_URL);
+const COOKIE = 'liason_token';
+
+function requireUser(req) {
+  const cookie = req.headers.get('cookie') || '';
+  const m = cookie.match(new RegExp(`${COOKIE}=([^;]+)`));
+  if (!m) throw new Error('Not authenticated');
+  const token = decodeURIComponent(m[1]);
+  const payload = jwt.verify(token, process.env.JWT_SECRET);
+  return { id: payload.sub || payload.id };
+}
 
 export async function GET(request) {
   try {
-    const user = await getUserFromCookie(request.headers.get('cookie') || '');
-    if (!user?.id) return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401 });
-
-    const rows = await sql`SELECT data FROM i129f_drafts WHERE user_id = ${user.id} LIMIT 1`;
-    return NextResponse.json({ ok: true, data: rows[0]?.data || null });
+    const { id } = requireUser(request);
+    const rows = await sql`SELECT data FROM i129f_drafts WHERE user_id = ${id}`;
+    return NextResponse.json({ ok:true, data: rows[0]?.data || null });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    return NextResponse.json({ ok:false, error:String(e) }, { status: e.message.includes('Not authenticated') ? 401 : 500 });
   }
 }
