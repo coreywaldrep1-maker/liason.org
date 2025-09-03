@@ -1,35 +1,32 @@
+// app/api/i129f/save/route.js
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { neon } from '@neondatabase/serverless';
-import jwt from 'jsonwebtoken';
+import { verifyJWT } from '@/lib/auth';
 
 const sql = neon(process.env.DATABASE_URL);
-const COOKIE = 'liason_token';
 
-function requireUser(req) {
-  const cookie = req.headers.get('cookie') || '';
-  const m = cookie.match(new RegExp(`${COOKIE}=([^;]+)`));
-  if (!m) throw new Error('Not authenticated');
-  const token = decodeURIComponent(m[1]);
-  const payload = jwt.verify(token, process.env.JWT_SECRET);
-  return { id: payload.sub || payload.id, email: payload.email };
-}
-
-export async function POST(request) {
+export async function POST(req) {
   try {
-    const { id } = requireUser(request);
-    const { data } = await request.json();
-    if (!data || typeof data !== 'object') {
-      return NextResponse.json({ ok:false, error:'Missing data' }, { status:400 });
-    }
+    const token = cookies().get('liason_token')?.value;
+    if (!token) return NextResponse.json({ ok:false, error:'no-jwt' }, { status:401 });
+    const user = await verifyJWT(token).catch(() => null);
+    if (!user) return NextResponse.json({ ok:false, error:'bad-jwt' }, { status:401 });
+
+    const { data } = await req.json();
+    if (!data) return NextResponse.json({ ok:false, error:'no-data' }, { status:400 });
+
     await sql`
-      INSERT INTO i129f_drafts (user_id, data)
-      VALUES (${id}, ${sql.json(data)})
-      ON CONFLICT (user_id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+      INSERT INTO i129f_entries (user_id, data)
+      VALUES (${user.id}::uuid, ${JSON.stringify(data)}::jsonb)
+      ON CONFLICT (user_id)
+      DO UPDATE SET data = EXCLUDED.data, updated_at = now()
     `;
+
     return NextResponse.json({ ok:true });
   } catch (e) {
-    return NextResponse.json({ ok:false, error:String(e) }, { status: e.message.includes('Not authenticated') ? 401 : 500 });
+    return NextResponse.json({ ok:false, error:String(e) }, { status:500 });
   }
 }
