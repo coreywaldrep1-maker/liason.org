@@ -1,8 +1,9 @@
+export const runtime = 'nodejs';
+
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import jwt from 'jsonwebtoken';
 import { PDFDocument } from 'pdf-lib';
-import { toPdfFields } from '@/lib/i129f-map';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
