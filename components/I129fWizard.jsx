@@ -111,25 +111,25 @@ export default function I129fWizard() {
     })();
   }, []);
 
-  async function save() {
-    setBusy(true); setNotice('');
-    try {
-      const r = await fetch('/api/i129f/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: form }),
-      });
-      const j = await r.json().catch(()=> ({}));
-      if (!r.ok || !j?.ok) throw new Error(j?.error || 'Save failed');
-      setNotice('Progress saved.');
-    } catch (e) {
-      console.error(e);
-      setNotice('Save failed. Make sure you are logged in.');
-    } finally {
-      setBusy(false);
-      setTimeout(()=>setNotice(''), 3500);
-    }
+ async function save() {
+  setBusy(true);
+  try {
+    const r = await fetch('/api/i129f/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',        // <— add this line
+      body: JSON.stringify({ data: form }),
+    });
+    const j = await r.json();
+    if (!j?.ok) throw new Error(j?.error || 'Save failed');
+    alert('Progress saved.');
+  } catch (e) {
+    alert('Save failed. Please try again.');
+    console.error(e);
+  } finally {
+    setBusy(false);
   }
+}
 
   function next(){ setStep(s => Math.min(s+1, STEPS.length-1)); }
   function back(){ setStep(s => Math.max(s-1, 0)); }
