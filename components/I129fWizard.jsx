@@ -1,12 +1,5 @@
 'use client';
-
 import { useEffect, useState } from 'react';
-
-/**
- * This wizard saves data under a nested shape that matches lib/i129f-map.js:
- * relationship, petitioner (with name/mailing/physical/prevAddresses/jobs/contact),
- * beneficiary (same ideas), etc. Missing values are fine—the PDF filler skips them.
- */
 
 const STEPS = [
   { key: 'petitioner', label: 'Petitioner' },
@@ -16,106 +9,95 @@ const STEPS = [
   { key: 'review',     label: 'Review & download' },
 ];
 
-// ---------- tiny helpers to read/set nested paths ----------
-
 function getByPath(obj, path) {
-  if (!obj || !path) return undefined;
+  if (!obj) return '';
   const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
   let cur = obj;
-  for (const p of parts) {
-    if (cur == null) return undefined;
-    cur = cur[p];
-  }
-  return cur;
+  for (const p of parts) { if (cur == null) return ''; cur = cur[p]; }
+  return cur ?? '';
 }
-
 function setByPath(obj, path, value) {
   const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
   let cur = obj;
-  for (let i = 0; i < parts.length - 1; i++) {
+  for (let i=0;i<parts.length-1;i++) {
     const k = parts[i];
     if (cur[k] == null || typeof cur[k] !== 'object') cur[k] = {};
     cur = cur[k];
   }
-  cur[parts[parts.length - 1]] = value;
+  cur[parts[parts.length-1]] = value;
 }
-
-// simple controlled setter
-function useSetter(form, setForm) {
-  return (path) => (eOrVal) => {
-    const value = typeof eOrVal === 'object' && eOrVal?.target !== undefined
-      ? eOrVal.target.value
-      : eOrVal;
-    setForm(prev => {
-      const copy = structuredClone(prev);
-      setByPath(copy, path, value);
-      return copy;
-    });
-  };
+function normalizeDateMMDDYYYY(v) {
+  const s = String(v || '').trim();
+  if (!s) return '';
+  // Allow digits, slashes, dashes; reformat to MM/DD/YYYY if possible
+  const only = s.replace(/[^\d]/g,'');
+  if (only.length === 8) {
+    const mm = only.slice(0,2);
+    const dd = only.slice(2,4);
+    const yyyy = only.slice(4);
+    return `${mm}/${dd}/${yyyy}`;
+  }
+  return s; // let server do final validation
 }
-
-// ---------- main component ----------
 
 export default function I129fWizard() {
-  const [step, setStep]   = useState(0);
-  const [busy, setBusy]   = useState(false);
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
-  const [form, setForm]   = useState(() => ({
-    relationship: {
-      classification: 'K1',    // 'K1' or 'K3'
-      i130Filed: false
-    },
+  const [form, setForm] = useState(() => ({
+    relationship: { classification:'K1', i130Filed:false },
     petitioner: {
-      aNumber: '', uscisAccount: '', ssn: '',
-      name: { last:'', first:'', middle:'' },
-      otherNames: [], // [{last,first,middle}]
+      aNumber:'', uscisAccount:'', ssn:'',
+      name:{ last:'', first:'', middle:'' },
+      otherNames: [],
       mailingSameAsPhysical: true,
-      mailing:  { inCareOf:'', street:'', unitType:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'US' },
-      physical: { street:'', unitType:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'US' },
-      prevAddresses: [
+      mailing:{ inCareOf:'', street:'', unitType:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'US' },
+      physical:{ street:'', unitType:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'US' },
+      prevAddresses:[
         { street:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'US', dateFrom:'', dateTo:'' },
         { street:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'US', dateFrom:'', dateTo:'' }
       ],
-      jobs: [
+      jobs:[
         { employer:'', occupation:'', dateFrom:'', dateTo:'', street:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'US' },
         { employer:'', occupation:'', dateFrom:'', dateTo:'', street:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'US' }
       ],
-      contact: { dayPhone:'', mobile:'', email:'' },
-      signature: { date:'' }
+      contact:{ dayPhone:'', mobile:'', email:'' },
+      signature:{ date:'' }
     },
-    beneficiary: {
+    beneficiary:{
       aNumber:'', ssn:'', dob:'',
-      name: { last:'', first:'', middle:'' },
-      birth: { city:'', country:'' },
+      name:{ last:'', first:'', middle:'' },
+      birth:{ city:'', country:'' },
       citizenship:'',
-      mailing:  { inCareOf:'', street:'', unitType:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'' },
-      physical: { street:'', unitType:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'' },
-      jobs: [
+      mailing:{ inCareOf:'', street:'', unitType:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'' },
+      physical:{ street:'', unitType:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'' },
+      jobs:[
         { employer:'', occupation:'', dateFrom:'', dateTo:'', street:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'' },
         { employer:'', occupation:'', dateFrom:'', dateTo:'', street:'', unitNumber:'', city:'', state:'', zip:'', province:'', postalCode:'', country:'' }
       ],
-      parents: [
-        { first:'', last:'', middle:'', dob:'', deceased:false, citizenship:'', birth:{ city:'', country:'' } }
-      ],
-      travel: {
-        arrivedAs:'', i94:'', dateArrival:'', dateExpiry:'',
-        passportNumber:'', travelDocNumber:'', passportCountry:'', passportExp:''
-      },
-      traits: { race: { white:false, asian:false, black:false, nativeAmerican:false, pacificIslander:false } }
+      parents:[{ first:'', last:'', middle:'', dob:'', deceased:false, citizenship:'', birth:{ city:'', country:'' } }],
+      travel:{ arrivedAs:'', i94:'', dateArrival:'', dateExpiry:'', passportNumber:'', travelDocNumber:'', passportCountry:'', passportExp:'' },
+      traits:{ race:{ white:false, asian:false, black:false, nativeAmerican:false, pacificIslander:false } }
     },
-    interpreter: {
-      name:{ first:'', last:'' }, business:'', language:'',
-      phone:{ area:'', number:'' }, email:'', signatureDate:''
-    },
-    preparer: {
-      name:{ first:'', last:'' }, business:'', dayPhone:'', mobile:'', email:'', signatureDate:''
-    },
-    additional: []
+    interpreter:{ name:{first:'',last:''}, business:'', language:'', phone:{area:'',number:''}, email:'', signatureDate:'' },
+    preparer:{ name:{first:'',last:''}, business:'', dayPhone:'', mobile:'', email:'', signatureDate:'' },
+    additional:[]
   }));
 
-  const set = useSetter(form, setForm);
+  // bind() so inputs always take raw value (not pooled event)
+  const bind = (path, {isDate=false} = {}) => ({
+    value: getByPath(form, path),
+    onChange: (e) => {
+      const raw = e?.target?.value ?? '';
+      const val = isDate ? normalizeDateMMDDYYYY(raw) : raw;
+      setForm(prev => {
+        const copy = structuredClone(prev);
+        setByPath(copy, path, val);
+        return copy;
+      });
+    }
+  });
 
-  // Load previously saved draft (if any)
   useEffect(() => {
     (async () => {
       try {
@@ -123,7 +105,6 @@ export default function I129fWizard() {
         if (!r.ok) return;
         const j = await r.json();
         if (j?.ok && j.data) {
-          // Merge shallowly — prefer saved keys
           setForm(prev => ({ ...prev, ...j.data }));
         }
       } catch {}
@@ -131,50 +112,41 @@ export default function I129fWizard() {
   }, []);
 
   async function save() {
-    setBusy(true);
-    setNotice('');
+    setBusy(true); setNotice('');
     try {
       const r = await fetch('/api/i129f/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ data: form }),
       });
-      const j = await r.json().catch(() => ({}));
+      const j = await r.json().catch(()=> ({}));
       if (!r.ok || !j?.ok) throw new Error(j?.error || 'Save failed');
       setNotice('Progress saved.');
     } catch (e) {
       console.error(e);
-      setNotice('Save failed. Please make sure you are logged in and try again.');
+      setNotice('Save failed. Make sure you are logged in.');
     } finally {
       setBusy(false);
-      setTimeout(() => setNotice(''), 4000);
+      setTimeout(()=>setNotice(''), 3500);
     }
   }
 
-  function next() { setStep(s => Math.min(s + 1, STEPS.length - 1)); }
-  function back() { setStep(s => Math.max(s - 1, 0)); }
+  function next(){ setStep(s => Math.min(s+1, STEPS.length-1)); }
+  function back(){ setStep(s => Math.max(s-1, 0)); }
 
-  // If "mailing same as physical" is toggled true, copy mailing into physical (one-time copy)
-  function onMailingSameToggle(val) {
-    set('petitioner.mailingSameAsPhysical')(val);
-    if (val) {
-      const m = getByPath(form, 'petitioner.mailing') || {};
-      setForm(prev => ({
-        ...prev,
-        petitioner: {
-          ...prev.petitioner,
-          physical: { ...m }
-        }
-      }));
-    }
+  function onMailingSameToggle(valYesNo) {
+    const yes = valYesNo === 'yes';
+    setForm(prev => {
+      const copy = structuredClone(prev);
+      copy.petitioner.mailingSameAsPhysical = yes;
+      if (yes) copy.petitioner.physical = { ...copy.petitioner.mailing };
+      return copy;
+    });
   }
 
-  // UI helpers
-  const Row = ({ children }) => <div style={{display:'grid', gap:8}}>{children}</div>;
-  const TwoCol = ({ children }) => (
-    <div style={{display:'grid', gap:10, gridTemplateColumns:'1fr 1fr', alignItems:'end'}}>{children}</div>
-  );
-  const Field = ({ label, children, hint }) => (
+  const Row   = ({children}) => <div style={{display:'grid', gap:8}}>{children}</div>;
+  const TwoCol= ({children}) => <div style={{display:'grid', gap:10, gridTemplateColumns:'1fr 1fr', alignItems:'end'}}>{children}</div>;
+  const Field = ({ label, hint, children }) => (
     <label className="small" style={{display:'grid', gap:6}}>
       <span style={{fontWeight:600}}>{label}</span>
       {hint && <span style={{color:'#64748b'}}>{hint}</span>}
@@ -184,60 +156,40 @@ export default function I129fWizard() {
 
   return (
     <div className="card" style={{display:'grid', gap:12}}>
-      {/* step tabs */}
       <div style={{display:'flex', flexWrap:'wrap', gap:8}}>
-        {STEPS.map((s, i) => (
-          <button
-            key={s.key}
-            type="button"
-            onClick={() => setStep(i)}
+        {STEPS.map((s,i)=>(
+          <button key={s.key} type="button" onClick={()=>setStep(i)}
             className="small"
-            style={{
-              padding:'6px 10px',
-              border:'1px solid #e2e8f0',
-              borderRadius:8,
-              background: i===step ? '#eef2ff' : '#fff'
-            }}
-          >
+            style={{padding:'6px 10px', border:'1px solid #e2e8f0', borderRadius:8, background:i===step?'#eef2ff':'#fff'}}>
             {i+1}. {s.label}
           </button>
         ))}
       </div>
 
-      {/* STEP 0: Petitioner */}
       {step===0 && (
         <section style={{display:'grid', gap:12}}>
           <h3 style={{margin:0}}>Petitioner</h3>
           <div className="small">Usually the U.S. citizen filing the petition.</div>
-
           <TwoCol>
             <Field label="Classification">
-              <div style={{display:'flex', gap:10, alignItems:'center'}}>
+              <div style={{display:'flex', gap:12, alignItems:'center'}}>
                 <label className="small" style={{display:'inline-flex', gap:6, alignItems:'center'}}>
-                  <input type="radio"
-                         name="class"
-                         checked={getByPath(form,'relationship.classification')==='K1'}
-                         onChange={()=>set('relationship.classification')('K1')} />
+                  <input type="radio" name="class" checked={form.relationship.classification==='K1'}
+                         onChange={()=> setForm(p=>({...p,relationship:{...p.relationship,classification:'K1'}}))} />
                   K-1 Fiancé(e)
                 </label>
                 <label className="small" style={{display:'inline-flex', gap:6, alignItems:'center'}}>
-                  <input type="radio"
-                         name="class"
-                         checked={getByPath(form,'relationship.classification')==='K3'}
-                         onChange={()=>set('relationship.classification')('K3')} />
+                  <input type="radio" name="class" checked={form.relationship.classification==='K3'}
+                         onChange={()=> setForm(p=>({...p,relationship:{...p.relationship,classification:'K3'}}))} />
                   K-3 Spouse
                 </label>
               </div>
             </Field>
-
-            {getByPath(form,'relationship.classification')==='K3' && (
-              <Field label="If K-3: Have you filed Form I-130 for your spouse?">
-                <select
-                  value={getByPath(form,'relationship.i130Filed') ? 'yes':'no'}
-                  onChange={(e)=>set('relationship.i130Filed')(e.target.value==='yes')}
-                >
-                  <option value="no">No</option>
-                  <option value="yes">Yes</option>
+            {form.relationship.classification==='K3' && (
+              <Field label="If K-3: Have you filed Form I-130?">
+                <select value={form.relationship.i130Filed?'yes':'no'}
+                        onChange={(e)=> setForm(p=>({...p,relationship:{...p.relationship,i130Filed:e.target.value==='yes'}}))}>
+                  <option value="no">No</option><option value="yes">Yes</option>
                 </select>
               </Field>
             )}
@@ -246,56 +198,36 @@ export default function I129fWizard() {
           <Row>
             <h4 style={{margin:'8px 0 0'}}>Your name</h4>
             <TwoCol>
-              <Field label="Family name (last)">
-                <input value={getByPath(form,'petitioner.name.last')||''}
-                       onChange={set('petitioner.name.last')} />
-              </Field>
-              <Field label="Given name (first)">
-                <input value={getByPath(form,'petitioner.name.first')||''}
-                       onChange={set('petitioner.name.first')} />
-              </Field>
+              <Field label="Family name (last)"><input style={{width:'100%'}} {...bind('petitioner.name.last')} /></Field>
+              <Field label="Given name (first)"><input style={{width:'100%'}} {...bind('petitioner.name.first')} /></Field>
             </TwoCol>
             <TwoCol>
-              <Field label="Middle name">
-                <input value={getByPath(form,'petitioner.name.middle')||''}
-                       onChange={set('petitioner.name.middle')} />
-              </Field>
+              <Field label="Middle name"><input style={{width:'100%'}} {...bind('petitioner.name.middle')} /></Field>
               <div />
             </TwoCol>
           </Row>
 
           <Row>
             <h4 style={{margin:'8px 0 0'}}>Other names used</h4>
-            <Field label="Have you used any other names? (aliases, maiden, nicknames)">
+            <Field label="Have you used any other names?">
               <select
-                value={(getByPath(form,'petitioner.otherNames')||[]).length>0 ? 'yes':'no'}
+                value={(form.petitioner.otherNames||[]).length>0 ? 'yes' : 'no'}
                 onChange={(e)=>{
                   const yes = e.target.value==='yes';
-                  setForm(prev => {
-                    const copy = structuredClone(prev);
-                    copy.petitioner.otherNames = yes ? (prev.petitioner.otherNames?.length? prev.petitioner.otherNames : [{last:'',first:'',middle:''}]) : [];
-                    return copy;
-                  });
+                  setForm(prev => ({...prev, petitioner:{
+                    ...prev.petitioner,
+                    otherNames: yes ? (prev.petitioner.otherNames?.length? prev.petitioner.otherNames : [{last:'',first:'',middle:''}]) : []
+                  }}));
                 }}
               >
-                <option value="no">No</option>
-                <option value="yes">Yes</option>
+                <option value="no">No</option><option value="yes">Yes</option>
               </select>
             </Field>
-            {(getByPath(form,'petitioner.otherNames')||[]).slice(0,1).map((_,i)=>(
+            {(form.petitioner.otherNames||[]).slice(0,1).map((_,i)=>(
               <TwoCol key={i}>
-                <Field label="Other family name (last)">
-                  <input value={getByPath(form,`petitioner.otherNames[${i}].last`)||''}
-                         onChange={set(`petitioner.otherNames[${i}].last`)} />
-                </Field>
-                <Field label="Other given name (first)">
-                  <input value={getByPath(form,`petitioner.otherNames[${i}].first`)||''}
-                         onChange={set(`petitioner.otherNames[${i}].first`)} />
-                </Field>
-                <Field label="Other middle name">
-                  <input value={getByPath(form,`petitioner.otherNames[${i}].middle`)||''}
-                         onChange={set(`petitioner.otherNames[${i}].middle`)} />
-                </Field>
+                <Field label="Other family name (last)"><input style={{width:'100%'}} {...bind(`petitioner.otherNames[${i}].last`)} /></Field>
+                <Field label="Other given name (first)"><input style={{width:'100%'}} {...bind(`petitioner.otherNames[${i}].first`)} /></Field>
+                <Field label="Other middle name"><input style={{width:'100%'}} {...bind(`petitioner.otherNames[${i}].middle`)} /></Field>
                 <div />
               </TwoCol>
             ))}
@@ -304,144 +236,74 @@ export default function I129fWizard() {
           <Row>
             <h4 style={{margin:'8px 0 0'}}>Government numbers (if any)</h4>
             <TwoCol>
-              <Field label="Alien Registration Number (A-Number)">
-                <input value={getByPath(form,'petitioner.aNumber')||''}
-                       onChange={set('petitioner.aNumber')} />
-              </Field>
-              <Field label="USCIS Online Account Number">
-                <input value={getByPath(form,'petitioner.uscisAccount')||''}
-                       onChange={set('petitioner.uscisAccount')} />
-              </Field>
+              <Field label="Alien Registration Number (A-Number)"><input style={{width:'100%'}} {...bind('petitioner.aNumber')} /></Field>
+              <Field label="USCIS Online Account Number"><input style={{width:'100%'}} {...bind('petitioner.uscisAccount')} /></Field>
             </TwoCol>
             <TwoCol>
-              <Field label="U.S. Social Security Number">
-                <input value={getByPath(form,'petitioner.ssn')||''}
-                       onChange={set('petitioner.ssn')} />
-              </Field>
+              <Field label="U.S. Social Security Number"><input style={{width:'100%'}} {...bind('petitioner.ssn')} /></Field>
               <div />
             </TwoCol>
           </Row>
         </section>
       )}
 
-      {/* STEP 1: Addresses */}
       {step===1 && (
         <section style={{display:'grid', gap:12}}>
           <h3 style={{margin:0}}>Addresses</h3>
-
           <Row>
             <h4 style={{margin:'8px 0 0'}}>Mailing address</h4>
-            <Field label="In care of (optional)">
-              <input value={getByPath(form,'petitioner.mailing.inCareOf')||''}
-                     onChange={set('petitioner.mailing.inCareOf')} />
-            </Field>
+            <Field label="In care of (optional)"><input style={{width:'100%'}} {...bind('petitioner.mailing.inCareOf')} /></Field>
             <TwoCol>
-              <Field label="Street number and name">
-                <input value={getByPath(form,'petitioner.mailing.street')||''}
-                       onChange={set('petitioner.mailing.street')} />
-              </Field>
+              <Field label="Street number and name"><input style={{width:'100%'}} {...bind('petitioner.mailing.street')} /></Field>
               <Field label="Unit type (Apt/Ste/Flr)">
-                <select value={getByPath(form,'petitioner.mailing.unitType')||''}
-                        onChange={set('petitioner.mailing.unitType')}>
-                  <option value="">—</option>
-                  <option value="apt">Apt</option>
-                  <option value="ste">Ste</option>
-                  <option value="flr">Flr</option>
+                <select {...bind('petitioner.mailing.unitType')}>
+                  <option value="">—</option><option value="apt">Apt</option><option value="ste">Ste</option><option value="flr">Flr</option>
                 </select>
               </Field>
             </TwoCol>
             <TwoCol>
-              <Field label="Unit number">
-                <input value={getByPath(form,'petitioner.mailing.unitNumber')||''}
-                       onChange={set('petitioner.mailing.unitNumber')} />
-              </Field>
-              <Field label="City">
-                <input value={getByPath(form,'petitioner.mailing.city')||''}
-                       onChange={set('petitioner.mailing.city')} />
-              </Field>
+              <Field label="Unit number"><input style={{width:'100%'}} {...bind('petitioner.mailing.unitNumber')} /></Field>
+              <Field label="City"><input style={{width:'100%'}} {...bind('petitioner.mailing.city')} /></Field>
             </TwoCol>
             <TwoCol>
               <Field label="State / Province">
-                <input value={getByPath(form,'petitioner.mailing.state')||getByPath(form,'petitioner.mailing.province')||''}
-                       onChange={(e)=>{
-                         set('petitioner.mailing.state')(e);
-                         set('petitioner.mailing.province')(e);
-                       }} />
+                <input style={{width:'100%'}} {...bind('petitioner.mailing.state')} />
               </Field>
               <Field label="ZIP / Postal code">
-                <input value={getByPath(form,'petitioner.mailing.zip')||getByPath(form,'petitioner.mailing.postalCode')||''}
-                       onChange={(e)=>{
-                         set('petitioner.mailing.zip')(e);
-                         set('petitioner.mailing.postalCode')(e);
-                       }} />
+                <input style={{width:'100%'}} {...bind('petitioner.mailing.zip')} />
               </Field>
             </TwoCol>
             <TwoCol>
-              <Field label="Country">
-                <input value={getByPath(form,'petitioner.mailing.country')||''}
-                       onChange={set('petitioner.mailing.country')} />
-              </Field>
-              <Field label="Is your mailing address the same as your physical address?">
-                <select
-                  value={getByPath(form,'petitioner.mailingSameAsPhysical') ? 'yes':'no'}
-                  onChange={(e)=>onMailingSameToggle(e.target.value==='yes')}
-                >
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
+              <Field label="Country"><input style={{width:'100%'}} {...bind('petitioner.mailing.country')} /></Field>
+              <Field label="Is mailing same as physical?">
+                <select value={form.petitioner.mailingSameAsPhysical ? 'yes':'no'} onChange={(e)=>onMailingSameToggle(e.target.value)}>
+                  <option value="yes">Yes</option><option value="no">No</option>
                 </select>
               </Field>
             </TwoCol>
           </Row>
 
-          {!getByPath(form,'petitioner.mailingSameAsPhysical') && (
+          {!form.petitioner.mailingSameAsPhysical && (
             <Row>
               <h4 style={{margin:'8px 0 0'}}>Physical address</h4>
               <TwoCol>
-                <Field label="Street number and name">
-                  <input value={getByPath(form,'petitioner.physical.street')||''}
-                         onChange={set('petitioner.physical.street')} />
-                </Field>
+                <Field label="Street number and name"><input style={{width:'100%'}} {...bind('petitioner.physical.street')} /></Field>
                 <Field label="Unit type (Apt/Ste/Flr)">
-                  <select value={getByPath(form,'petitioner.physical.unitType')||''}
-                          onChange={set('petitioner.physical.unitType')}>
-                    <option value="">—</option>
-                    <option value="apt">Apt</option>
-                    <option value="ste">Ste</option>
-                    <option value="flr">Flr</option>
+                  <select {...bind('petitioner.physical.unitType')}>
+                    <option value="">—</option><option value="apt">Apt</option><option value="ste">Ste</option><option value="flr">Flr</option>
                   </select>
                 </Field>
               </TwoCol>
               <TwoCol>
-                <Field label="Unit number">
-                  <input value={getByPath(form,'petitioner.physical.unitNumber')||''}
-                         onChange={set('petitioner.physical.unitNumber')} />
-                </Field>
-                <Field label="City">
-                  <input value={getByPath(form,'petitioner.physical.city')||''}
-                         onChange={set('petitioner.physical.city')} />
-                </Field>
+                <Field label="Unit number"><input style={{width:'100%'}} {...bind('petitioner.physical.unitNumber')} /></Field>
+                <Field label="City"><input style={{width:'100%'}} {...bind('petitioner.physical.city')} /></Field>
               </TwoCol>
               <TwoCol>
-                <Field label="State / Province">
-                  <input value={getByPath(form,'petitioner.physical.state')||getByPath(form,'petitioner.physical.province')||''}
-                         onChange={(e)=>{
-                           set('petitioner.physical.state')(e);
-                           set('petitioner.physical.province')(e);
-                         }} />
-                </Field>
-                <Field label="ZIP / Postal code">
-                  <input value={getByPath(form,'petitioner.physical.zip')||getByPath(form,'petitioner.physical.postalCode')||''}
-                         onChange={(e)=>{
-                           set('petitioner.physical.zip')(e);
-                           set('petitioner.physical.postalCode')(e);
-                         }} />
-                </Field>
+                <Field label="State / Province"><input style={{width:'100%'}} {...bind('petitioner.physical.state')} /></Field>
+                <Field label="ZIP / Postal code"><input style={{width:'100%'}} {...bind('petitioner.physical.zip')} /></Field>
               </TwoCol>
               <TwoCol>
-                <Field label="Country">
-                  <input value={getByPath(form,'petitioner.physical.country')||''}
-                         onChange={set('petitioner.physical.country')} />
-                </Field>
+                <Field label="Country"><input style={{width:'100%'}} {...bind('petitioner.physical.country')} /></Field>
                 <div />
               </TwoCol>
             </Row>
@@ -449,89 +311,51 @@ export default function I129fWizard() {
         </section>
       )}
 
-      {/* STEP 2: Beneficiary */}
       {step===2 && (
         <section style={{display:'grid', gap:12}}>
           <h3 style={{margin:0}}>Beneficiary</h3>
-
           <TwoCol>
-            <Field label="Family name (last)">
-              <input value={getByPath(form,'beneficiary.name.last')||''}
-                     onChange={set('beneficiary.name.last')} />
-            </Field>
-            <Field label="Given name (first)">
-              <input value={getByPath(form,'beneficiary.name.first')||''}
-                     onChange={set('beneficiary.name.first')} />
-            </Field>
+            <Field label="Family name (last)"><input style={{width:'100%'}} {...bind('beneficiary.name.last')} /></Field>
+            <Field label="Given name (first)"><input style={{width:'100%'}} {...bind('beneficiary.name.first')} /></Field>
           </TwoCol>
           <TwoCol>
-            <Field label="Middle name">
-              <input value={getByPath(form,'beneficiary.name.middle')||''}
-                     onChange={set('beneficiary.name.middle')} />
-            </Field>
-            <Field label="Date of birth (YYYY-MM-DD)">
-              <input value={getByPath(form,'beneficiary.dob')||''}
-                     onChange={set('beneficiary.dob')} placeholder="YYYY-MM-DD" />
-            </Field>
+            <Field label="Middle name"><input style={{width:'100%'}} {...bind('beneficiary.name.middle')} /></Field>
+            <Field label="Date of birth (MM/DD/YYYY)"><input style={{width:'100%'}} {...bind('beneficiary.dob', {isDate:true})} placeholder="MM/DD/YYYY" /></Field>
           </TwoCol>
-
           <TwoCol>
-            <Field label="City/Town of birth">
-              <input value={getByPath(form,'beneficiary.birth.city')||''}
-                     onChange={set('beneficiary.birth.city')} />
-            </Field>
-            <Field label="Country of birth">
-              <input value={getByPath(form,'beneficiary.birth.country')||''}
-                     onChange={set('beneficiary.birth.country')} />
-            </Field>
+            <Field label="City/Town of birth"><input style={{width:'100%'}} {...bind('beneficiary.birth.city')} /></Field>
+            <Field label="Country of birth"><input style={{width:'100%'}} {...bind('beneficiary.birth.country')} /></Field>
           </TwoCol>
-
           <TwoCol>
-            <Field label="Citizenship / Nationality">
-              <input value={getByPath(form,'beneficiary.citizenship')||''}
-                     onChange={set('beneficiary.citizenship')} />
-            </Field>
+            <Field label="Citizenship / Nationality"><input style={{width:'100%'}} {...bind('beneficiary.citizenship')} /></Field>
             <div />
           </TwoCol>
         </section>
       )}
 
-      {/* STEP 3: Relationship & History */}
       {step===3 && (
         <section style={{display:'grid', gap:12}}>
           <h3 style={{margin:0}}>Relationship & history</h3>
-          <Field label="How did you meet? (short description)" hint="1–3 sentences is fine">
-            <textarea rows={4}
-                      value={getByPath(form,'history.howMet')||''}
-                      onChange={set('history.howMet')} />
+          <Field label="How did you meet? (short description)" hint="1–3 sentences">
+            <textarea rows={4} style={{width:'100%'}} {...bind('history.howMet')} />
           </Field>
           <Field label="Important dates (met/engaged/visited)">
-            <textarea rows={3}
-                      value={getByPath(form,'history.dates')||''}
-                      onChange={set('history.dates')} />
+            <textarea rows={3} style={{width:'100%'}} {...bind('history.dates')} />
           </Field>
           <Field label="Prior marriages / divorces (if any)">
-            <textarea rows={3}
-                      value={getByPath(form,'history.priorMarriages')||''}
-                      onChange={set('history.priorMarriages')} />
+            <textarea rows={3} style={{width:'100%'}} {...bind('history.priorMarriages')} />
           </Field>
         </section>
       )}
 
-      {/* STEP 4: Review & Download */}
       {step===4 && (
         <section style={{display:'grid', gap:10}}>
           <h3 style={{margin:0}}>Review & download</h3>
-          <div className="small">
-            When you’re ready, click to download a draft of your I-129F with your current answers.
-          </div>
-          <div>
-            <a className="btn btn-primary" href="/api/i129f/pdf">Download I-129F (PDF)</a>
-          </div>
+          <div className="small">Download a draft of your I-129F with your current answers (stays editable).</div>
+          <div><a className="btn btn-primary" href="/api/i129f/pdf">Download I-129F (PDF)</a></div>
         </section>
       )}
 
-      {/* footer actions */}
       <div style={{display:'flex', gap:8, justifyContent:'space-between', alignItems:'center'}}>
         <div style={{display:'flex', gap:8}}>
           <button type="button" onClick={back} className="btn" disabled={step===0}>Back</button>
@@ -539,9 +363,7 @@ export default function I129fWizard() {
         </div>
         <div style={{display:'flex', gap:10, alignItems:'center'}}>
           {notice && <span className="small" style={{color: notice.includes('failed') ? '#b91c1c' : '#16a34a'}}>{notice}</span>}
-          <button type="button" onClick={save} className="btn btn-primary" disabled={busy}>
-            {busy ? 'Saving…' : 'Save progress'}
-          </button>
+          <button type="button" onClick={save} className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save progress'}</button>
         </div>
       </div>
     </div>
