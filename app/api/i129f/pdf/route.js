@@ -1,90 +1,113 @@
+// app/api/i129f/pdf/route.js
 import { NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
+import { neon, neonConfig } from '@neondatabase/serverless';
 import { getUserFromCookie } from '@/lib/auth';
 import { PDFDocument } from 'pdf-lib';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import {
+  MAPPING_TEXT,
+  MAPPING_CHECK,
+  UNIT_TYPE_CHECKS_PETITIONER_MAILING,
+  UNIT_TYPE_CHECKS_PETITIONER_PHYSICAL,
+  UNIT_TYPE_CHECKS_BENEFICIARY_MAILING,
+  UNIT_TYPE_CHECKS_BENEFICIARY_PHYSICAL,
+} from '@/lib/i129f-map';
 
+export const runtime = 'nodejs';
+neonConfig.fetchConnectionCache = true;
 const sql = neon(process.env.DATABASE_URL);
+
+// Helper: read nested path with arrays (e.g., a.b[0].c)
+function getByPath(obj, pathStr) {
+  if (!obj || !pathStr) return undefined;
+  const parts = pathStr
+    .replace(/\[(\d+)\]/g, '.$1') // convert [0] to .0
+    .split('.')
+    .filter(Boolean);
+  let cur = obj;
+  for (const k of parts) {
+    if (cur == null) return undefined;
+    cur = cur[k];
+  }
+  return cur;
+}
+
+function truthy(val) {
+  return !!(val === true || val === 'true' || val === 1 || val === '1' || (typeof val === 'string' && val.length > 0));
+}
 
 export async function GET(request) {
   try {
     const user = await getUserFromCookie(request.headers.get('cookie') || '');
-    if (!user?.id) return NextResponse.json({ ok:false, error:'Not authenticated' }, { status:401 });
+    if (!user?.id) return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401 });
 
-    // Load user data
-    const rows = await sql`SELECT data FROM i129f_sessions WHERE user_id=${user.id} LIMIT 1`;
-    const data = rows[0]?.data || {};
+    // 1) Load draft
+    const rows = await sql`SELECT data FROM i129f_drafts WHERE user_id = ${user.id} LIMIT 1`;
+    const draft = rows[0]?.data || {};
 
-    // Load PDF
-    const p = path.join(process.cwd(), 'public', 'forms', 'i-129f.pdf');
-    const bytes = await fs.readFile(p);
+    // 2) Load blank form
+    const pdfPath = path.join(process.cwd(), 'public', 'forms', 'i-129f.pdf');
+    const bytes = await fs.readFile(pdfPath);
     const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
     const form = pdf.getForm();
 
-    // === MAPPING ===
-    // Replace the right-hand names with your AcroForm field names.
-    // Use /api/i129f/fields to list all fields from the PDF.
-    const map = {
-      // Petitioner
-      petitionerLast: data?.petitioner?.lastName || '',
-      petitionerFirst: data?.petitioner?.firstName || '',
-      petitionerMiddle: data?.petitioner?.middleName || '',
-      // Mailing
-      mailStreet: data?.mailing?.street || '',
-      mailUnitType: data?.mailing?.unitType || '',
-      mailUnitNum: data?.mailing?.unitNum || '',
-      mailCity: data?.mailing?.city || '',
-      mailState: data?.mailing?.state || '',
-      mailZip: data?.mailing?.zip || '',
-      // Beneficiary
-      beneLast: data?.beneficiary?.lastName || '',
-      beneFirst: data?.beneficiary?.firstName || '',
-      beneMiddle: data?.beneficiary?.middleName || '',
-      // History short examples
-      howMet: data?.history?.howMet || '',
-      dates: data?.history?.dates || '',
-      priorMarriages: data?.history?.priorMarriages || '',
-    };
-
-    // ACTUAL PDF FIELD NAMES (left side) -> our keys (right side)
-    const FIELD_NAMES = {
-      'Petitioner_Last_Name': 'petitionerLast',
-      'Petitioner_First_Name': 'petitionerFirst',
-      'Petitioner_Middle_Name': 'petitionerMiddle',
-      'Mail_Street': 'mailStreet',
-      'Mail_Unit_Type': 'mailUnitType',
-      'Mail_Unit_Num': 'mailUnitNum',
-      'Mail_City': 'mailCity',
-      'Mail_State': 'mailState',
-      'Mail_Zip': 'mailZip',
-      'Beneficiary_Last_Name': 'beneLast',
-      'Beneficiary_First_Name': 'beneFirst',
-      'Beneficiary_Middle_Name': 'beneMiddle',
-      'How_Met': 'howMet',
-      'Important_Dates': 'dates',
-      'Prior_Marriages': 'priorMarriages',
-    };
-
-    // Fill text fields if present
-    for (const [pdfFieldName, key] of Object.entries(FIELD_NAMES)) {
+    // 3) Fill TEXT
+    for (const [pdfField, pathStr] of Object.entries(MAPPING_TEXT)) {
+      const val = getByPath(draft, pathStr);
+      if (val == null || val === '') continue;
       try {
-        const tf = form.getTextField(pdfFieldName);
-        tf.setText(String(map[key] ?? ''));
+        form.getTextField(pdfField).setText(String(val));
       } catch {
-        // silently skip if not found
+        // If not a text field, ignore
       }
     }
 
-    const filled = await pdf.save();
-    const res = new NextResponse(filled, {
+    // 4) Set CHECKBOXES
+    for (const rule of MAPPING_CHECK) {
+      const { field, path, equals } = rule;
+      let val = getByPath(draft, path);
+      let shouldCheck = equals !== undefined ? val === equals : truthy(val);
+      try {
+        const cb = form.getCheckBox(field);
+        if (shouldCheck) cb.check(); else cb.uncheck();
+      } catch {
+        // not a checkbox field; ignore
+      }
+    }
+
+    // 5) Optional: Unit type (Apt/Ste/Flr) mapping if you confirm which ch# equals which
+    function setUnitChecks(map, unitType) {
+      if (!unitType || !map) return;
+      try {
+        const key = (unitType || '').toLowerCase();
+        const field = map[key];
+        if (!field) return;
+        form.getCheckBox(field).check();
+      } catch { /* ignore */ }
+    }
+    // Petitioner mailing unit
+    setUnitChecks(UNIT_TYPE_CHECKS_PETITIONER_MAILING, getByPath(draft, 'petitioner.mailing.unitType'));
+    // Petitioner physical unit
+    setUnitChecks(UNIT_TYPE_CHECKS_PETITIONER_PHYSICAL, getByPath(draft, 'petitioner.physical.unitType'));
+    // Beneficiary mailing unit
+    setUnitChecks(UNIT_TYPE_CHECKS_BENEFICIARY_MAILING, getByPath(draft, 'beneficiary.mailing.unitType'));
+    // Beneficiary physical unit
+    setUnitChecks(UNIT_TYPE_CHECKS_BENEFICIARY_PHYSICAL, getByPath(draft, 'beneficiary.physical.unitType'));
+
+    // 6) Flatten so filled text/checkboxes render everywhere
+    form.flatten();
+
+    // 7) Send file
+    const out = await pdf.save();
+    return new NextResponse(out, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="I-129F.pdf"',
+        'Content-Disposition': 'attachment; filename="i-129f-filled.pdf"',
+        'Cache-Control': 'no-store',
       },
     });
-    return res;
   } catch (e) {
-    return NextResponse.json({ ok:false, error:String(e) }, { status:500 });
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
