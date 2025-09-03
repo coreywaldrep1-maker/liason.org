@@ -109,3 +109,26 @@ input:focus, textarea:focus, select:focus {
   border: 1px solid var(--border);
   border-radius: 8px;
 }
+/* Ensure inputs/textarea are actually wide and don't clamp to 1ch */
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+input[type="password"],
+textarea {
+  width: 100%;
+  min-width: 0;          /* key fix for one-character clamping in flex/grid */
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font: inherit;
+}
+
+/* Let grid/flex containers shrink children correctly */
+label.small > div {
+  min-width: 0;          /* allows the input wrapper to shrink instead of clipping */
+}
+
+
+
+
