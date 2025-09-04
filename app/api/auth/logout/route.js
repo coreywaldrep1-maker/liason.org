@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
+import { clearAuthCookie } from '@/lib/auth';
 
 export async function POST() {
-  const res = NextResponse.json({ ok:true });
-  // Clear cookie
-  res.cookies.set('liason_token', '', { httpOnly:true, secure:true, sameSite:'lax', path:'/', maxAge:0 });
+  const res = NextResponse.json({ ok: true });
+  clearAuthCookie(res);
   return res;
 }
