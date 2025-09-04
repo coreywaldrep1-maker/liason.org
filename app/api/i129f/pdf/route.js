@@ -1,29 +1,32 @@
+// app/api/i129f/pdf/route.js
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { verifyJWT } from '@/lib/auth';
 import { PDFDocument } from 'pdf-lib';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 
 const sql = neon(process.env.DATABASE_URL);
 
 export async function GET(req) {
   try {
+    // must be logged in
     const user = await verifyJWT(req);
 
-    // Load saved data
+    // load saved data (we'll wire mapping next)
     const rows = await sql`SELECT data FROM i129f_entries WHERE user_id = ${user.id} LIMIT 1`;
     const data = rows[0]?.data || {};
 
-    // Load your AcroForm PDF file from /public (e.g., /public/i-129f.pdf)
-    const filePath = path.join(process.cwd(), 'public', 'i-129f.pdf');
-    const fileBytes = await fs.readFile(filePath);
-    const pdf = await PDFDocument.load(fileBytes);
+    // Fetch the AcroForm PDF from /public (must exist in your repo at /public/i-129f.pdf)
+    const pdfUrl = new URL('/i-129f.pdf', req.nextUrl.origin);
+    const res = await fetch(pdfUrl);
+    if (!res.ok) throw new Error('Missing /public/i-129f.pdf (GET ' + pdfUrl + ' returned ' + res.status + ')');
+    const bytes = await res.arrayBuffer();
 
-    // (Optional) fill fields by name here using pdf-lib if needed…
-    // For now we just return the original AcroForm so users can edit it after download.
+    // Keep it as editable AcroForm for now (users can tweak after download)
+    const pdf = await PDFDocument.load(bytes);
+
+    // (placeholder: this is where we’ll fill fields later using pdf.getForm())
 
     const out = await pdf.save();
     return new NextResponse(out, {
@@ -34,6 +37,6 @@ export async function GET(req) {
       },
     });
   } catch (e) {
-    return NextResponse.json({ ok:false, error:String(e) }, { status:401 });
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 401 });
   }
 }
