@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getUserFromCookie } from '@/lib/auth';
+import { verifyJWT } from '@/lib/auth';
 
-export async function GET(request) {
-  const user = await getUserFromCookie(request.headers.get('cookie') || '');
-  if (!user?.id) return NextResponse.json({ ok: false }, { status: 401 });
-  return NextResponse.json({ ok: true, user });
+export async function GET(req) {
+  try {
+    const user = await verifyJWT(req);
+    return NextResponse.json({ ok:true, user });
+  } catch {
+    return NextResponse.json({ ok:false, error:'no-jwt' }, { status:401 });
+  }
 }
