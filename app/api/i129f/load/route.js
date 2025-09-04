@@ -1,27 +1,22 @@
-export const runtime = 'nodejs';
-
+// app/api/i129f/load/route.js
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import jwt from 'jsonwebtoken';
+import { requireUser } from '@/lib/auth';
 
 const sql = neon(process.env.DATABASE_URL);
-const COOKIE = 'liason_token';
 
-function requireUser(req) {
-  const cookie = req.headers.get('cookie') || '';
-  const m = cookie.match(new RegExp(`${COOKIE}=([^;]+)`));
-  if (!m) throw new Error('Not authenticated');
-  const token = decodeURIComponent(m[1]);
-  const payload = jwt.verify(token, process.env.JWT_SECRET);
-  return { id: payload.sub || payload.id };
-}
-
-export async function GET(request) {
+export async function GET(req) {
   try {
-    const { id } = requireUser(request);
-    const rows = await sql`SELECT data FROM i129f_drafts WHERE user_id = ${id}`;
-    return NextResponse.json({ ok:true, data: rows[0]?.data || null });
+    const user = await requireUser(req);
+    if (!user?.id) {
+      return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const rows = await sql`SELECT data FROM i129f_entries WHERE user_id = ${user.id}::uuid LIMIT 1`;
+    const data = rows.length ? rows[0].data : null;
+
+    return NextResponse.json({ ok: true, data });
   } catch (e) {
-    return NextResponse.json({ ok:false, error:String(e) }, { status: e.message.includes('Not authenticated') ? 401 : 500 });
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
