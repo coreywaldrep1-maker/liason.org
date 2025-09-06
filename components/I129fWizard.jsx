@@ -20,11 +20,22 @@ export default function I129fWizard() {
     history: { howMet:'', dates:'', priorMarriages:'' },
   });
 
-  // Load saved progress (send cookies)
-const r = await fetch('/api/i129f/load', {
-  cache: 'no-store',
-  credentials: 'include',   // ✅ keep this
-});
+  // Load saved progress
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch('/api/i129f/load', {
+          cache: 'no-store',
+          credentials: 'include',   // <-- important so your auth cookie is sent
+        });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (j?.ok && j.data) {
+          setForm(prev => ({ ...prev, ...j.data }));
+        }
+      } catch {}
+    })();
+  }, []);
 
   function update(section, field, value) {
     setForm(prev => ({
@@ -39,7 +50,7 @@ const r = await fetch('/api/i129f/load', {
       const r = await fetch('/api/i129f/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include', // IMPORTANT for auth cookie
+        credentials: 'include',          // <-- add this too
         body: JSON.stringify({ data: form }),
       });
       const j = await r.json();
@@ -47,7 +58,7 @@ const r = await fetch('/api/i129f/load', {
       alert('Progress saved.');
     } catch (e) {
       console.error(e);
-      alert('Save failed. Please ensure you are logged in.');
+      alert('Save failed. Please make sure you are logged in and try again.');
     } finally {
       setBusy(false);
     }
@@ -82,28 +93,13 @@ const r = await fetch('/api/i129f/load', {
           <h3 style={{margin:0}}>Petitioner</h3>
           <div className="small">Usually the U.S. citizen filing the petition.</div>
           <Field label="Family name (last)">
-            <input
-              type="text"
-              value={form.petitioner.lastName}
-              onChange={e=>update('petitioner','lastName',e.target.value)}
-              placeholder="e.g., Smith"
-            />
+            <input value={form.petitioner.lastName} onChange={e=>update('petitioner','lastName',e.target.value)} />
           </Field>
           <Field label="Given name (first)">
-            <input
-              type="text"
-              value={form.petitioner.firstName}
-              onChange={e=>update('petitioner','firstName',e.target.value)}
-              placeholder="e.g., John"
-            />
+            <input value={form.petitioner.firstName} onChange={e=>update('petitioner','firstName',e.target.value)} />
           </Field>
           <Field label="Middle name">
-            <input
-              type="text"
-              value={form.petitioner.middleName}
-              onChange={e=>update('petitioner','middleName',e.target.value)}
-              placeholder=""
-            />
+            <input value={form.petitioner.middleName} onChange={e=>update('petitioner','middleName',e.target.value)} />
           </Field>
         </section>
       )}
@@ -112,52 +108,22 @@ const r = await fetch('/api/i129f/load', {
         <section style={{display:'grid', gap:10}}>
           <h3 style={{margin:0}}>Mailing address</h3>
           <Field label="Street number and name">
-            <input
-              type="text"
-              value={form.mailing.street}
-              onChange={e=>update('mailing','street',e.target.value)}
-              placeholder="123 Main St"
-            />
+            <input value={form.mailing.street} onChange={e=>update('mailing','street',e.target.value)} />
           </Field>
           <Field label="Unit type (Apt/Ste/Flr)">
-            <input
-              type="text"
-              value={form.mailing.unitType}
-              onChange={e=>update('mailing','unitType',e.target.value)}
-              placeholder="Apt / Ste / Flr"
-            />
+            <input value={form.mailing.unitType} onChange={e=>update('mailing','unitType',e.target.value)} />
           </Field>
           <Field label="Unit number">
-            <input
-              type="text"
-              value={form.mailing.unitNum}
-              onChange={e=>update('mailing','unitNum',e.target.value)}
-              placeholder="e.g., 4B"
-            />
+            <input value={form.mailing.unitNum} onChange={e=>update('mailing','unitNum',e.target.value)} />
           </Field>
           <Field label="City">
-            <input
-              type="text"
-              value={form.mailing.city}
-              onChange={e=>update('mailing','city',e.target.value)}
-            />
+            <input value={form.mailing.city} onChange={e=>update('mailing','city',e.target.value)} />
           </Field>
           <Field label="State">
-            <input
-              type="text"
-              value={form.mailing.state}
-              onChange={e=>update('mailing','state',e.target.value)}
-              placeholder="e.g., CA"
-            />
+            <input value={form.mailing.state} onChange={e=>update('mailing','state',e.target.value)} />
           </Field>
           <Field label="ZIP">
-            <input
-              type="text"
-              inputMode="numeric"
-              value={form.mailing.zip}
-              onChange={e=>update('mailing','zip',e.target.value)}
-              placeholder="e.g., 94105"
-            />
+            <input value={form.mailing.zip} onChange={e=>update('mailing','zip',e.target.value)} />
           </Field>
         </section>
       )}
@@ -166,25 +132,13 @@ const r = await fetch('/api/i129f/load', {
         <section style={{display:'grid', gap:10}}>
           <h3 style={{margin:0}}>Beneficiary</h3>
           <Field label="Family name (last)">
-            <input
-              type="text"
-              value={form.beneficiary.lastName}
-              onChange={e=>update('beneficiary','lastName',e.target.value)}
-            />
+            <input value={form.beneficiary.lastName} onChange={e=>update('beneficiary','lastName',e.target.value)} />
           </Field>
           <Field label="Given name (first)">
-            <input
-              type="text"
-              value={form.beneficiary.firstName}
-              onChange={e=>update('beneficiary','firstName',e.target.value)}
-            />
+            <input value={form.beneficiary.firstName} onChange={e=>update('beneficiary','firstName',e.target.value)} />
           </Field>
           <Field label="Middle name">
-            <input
-              type="text"
-              value={form.beneficiary.middleName}
-              onChange={e=>update('beneficiary','middleName',e.target.value)}
-            />
+            <input value={form.beneficiary.middleName} onChange={e=>update('beneficiary','middleName',e.target.value)} />
           </Field>
         </section>
       )}
@@ -193,26 +147,13 @@ const r = await fetch('/api/i129f/load', {
         <section style={{display:'grid', gap:10}}>
           <h3 style={{margin:0}}>Relationship & history</h3>
           <Field label="How did you meet? (short description)">
-            <textarea
-              rows={4}
-              value={form.history.howMet}
-              onChange={e=>update('history','howMet',e.target.value)}
-            />
+            <textarea rows={4} value={form.history.howMet} onChange={e=>update('history','howMet',e.target.value)} />
           </Field>
-          <Field label="Important dates (met/engaged/visited) (MM/DD/YYYY)">
-            <textarea
-              rows={3}
-              value={form.history.dates}
-              onChange={e=>update('history','dates',e.target.value)}
-              placeholder="e.g., Met 02/14/2021; Engaged 11/10/2023"
-            />
+          <Field label="Important dates (met/engaged/visited)">
+            <textarea rows={3} value={form.history.dates} onChange={e=>update('history','dates',e.target.value)} />
           </Field>
           <Field label="Prior marriages / divorces (if any)">
-            <textarea
-              rows={3}
-              value={form.history.priorMarriages}
-              onChange={e=>update('history','priorMarriages',e.target.value)}
-            />
+            <textarea rows={3} value={form.history.priorMarriages} onChange={e=>update('history','priorMarriages',e.target.value)} />
           </Field>
         </section>
       )}
@@ -242,9 +183,9 @@ const r = await fetch('/api/i129f/load', {
 
 function Field({ label, children }) {
   return (
-    <label className="small" style={{ display: 'grid', gap: 6, minWidth: 0 }}>
+    <label className="small" style={{display:'grid', gap:6, minWidth:0}}>
       <span>{label}</span>
-      <div style={{ display: 'grid', minWidth: 0 }}>
+      <div style={{display:'grid', minWidth:0}}>
         {children}
       </div>
     </label>
