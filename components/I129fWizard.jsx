@@ -21,19 +21,10 @@ export default function I129fWizard() {
   });
 
   // Load saved progress (send cookies)
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch('/api/i129f/load', {
-          cache: 'no-store',
-          credentials: 'include',
-        });
-        if (!r.ok) return; // likely not logged in
-        const j = await r.json();
-        if (j?.ok && j.data) setForm(prev => ({ ...prev, ...j.data }));
-      } catch {}
-    })();
-  }, []);
+const r = await fetch('/api/i129f/load', {
+  cache: 'no-store',
+  credentials: 'include',   // ✅ keep this
+});
 
   function update(section, field, value) {
     setForm(prev => ({
