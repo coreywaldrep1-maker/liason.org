@@ -1,3 +1,4 @@
+// components/I129fWizard.jsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -20,17 +21,17 @@ export default function I129fWizard() {
     history: { howMet:'', dates:'', priorMarriages:'' },
   });
 
-  // Load saved progress
+  // ---- Load saved data (must include credentials so server sees your cookie) ----
   useEffect(() => {
     (async () => {
       try {
         const r = await fetch('/api/i129f/load', {
           cache: 'no-store',
-          credentials: 'include',   // <-- important so your auth cookie is sent
+          credentials: 'include', // <= important
         });
         if (!r.ok) return;
         const j = await r.json();
-        if (j?.ok && j.data) {
+        if (j?.ok && j.data && typeof j.data === 'object') {
           setForm(prev => ({ ...prev, ...j.data }));
         }
       } catch {}
@@ -38,9 +39,10 @@ export default function I129fWizard() {
   }, []);
 
   function update(section, field, value) {
+    // fully controlled inputs; this prevents “1 char only” glitches
     setForm(prev => ({
       ...prev,
-      [section]: { ...(prev[section] || {}), [field]: value }
+      [section]: { ...(prev[section] || {}), [field]: value },
     }));
   }
 
@@ -50,7 +52,7 @@ export default function I129fWizard() {
       const r = await fetch('/api/i129f/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',          // <-- add this too
+        credentials: 'include',                 // <= important
         body: JSON.stringify({ data: form }),
       });
       const j = await r.json();
@@ -78,9 +80,9 @@ export default function I129fWizard() {
             className="small"
             style={{
               padding:'6px 10px',
-              border:'1px solid #e2e8f0',
+              border:'1px solid var(--border)',
               borderRadius:8,
-              background: i===step ? '#eef2ff' : '#fff'
+              background: i===step ? 'var(--primary-50)' : '#fff'
             }}
           >
             {i+1}. {s.label}
@@ -93,13 +95,13 @@ export default function I129fWizard() {
           <h3 style={{margin:0}}>Petitioner</h3>
           <div className="small">Usually the U.S. citizen filing the petition.</div>
           <Field label="Family name (last)">
-            <input value={form.petitioner.lastName} onChange={e=>update('petitioner','lastName',e.target.value)} />
+            <input type="text" value={form.petitioner.lastName} onChange={e=>update('petitioner','lastName',e.target.value)} />
           </Field>
           <Field label="Given name (first)">
-            <input value={form.petitioner.firstName} onChange={e=>update('petitioner','firstName',e.target.value)} />
+            <input type="text" value={form.petitioner.firstName} onChange={e=>update('petitioner','firstName',e.target.value)} />
           </Field>
           <Field label="Middle name">
-            <input value={form.petitioner.middleName} onChange={e=>update('petitioner','middleName',e.target.value)} />
+            <input type="text" value={form.petitioner.middleName} onChange={e=>update('petitioner','middleName',e.target.value)} />
           </Field>
         </section>
       )}
@@ -108,22 +110,22 @@ export default function I129fWizard() {
         <section style={{display:'grid', gap:10}}>
           <h3 style={{margin:0}}>Mailing address</h3>
           <Field label="Street number and name">
-            <input value={form.mailing.street} onChange={e=>update('mailing','street',e.target.value)} />
+            <input type="text" value={form.mailing.street} onChange={e=>update('mailing','street',e.target.value)} />
           </Field>
           <Field label="Unit type (Apt/Ste/Flr)">
-            <input value={form.mailing.unitType} onChange={e=>update('mailing','unitType',e.target.value)} />
+            <input type="text" value={form.mailing.unitType} onChange={e=>update('mailing','unitType',e.target.value)} />
           </Field>
           <Field label="Unit number">
-            <input value={form.mailing.unitNum} onChange={e=>update('mailing','unitNum',e.target.value)} />
+            <input type="text" value={form.mailing.unitNum} onChange={e=>update('mailing','unitNum',e.target.value)} />
           </Field>
           <Field label="City">
-            <input value={form.mailing.city} onChange={e=>update('mailing','city',e.target.value)} />
+            <input type="text" value={form.mailing.city} onChange={e=>update('mailing','city',e.target.value)} />
           </Field>
           <Field label="State">
-            <input value={form.mailing.state} onChange={e=>update('mailing','state',e.target.value)} />
+            <input type="text" value={form.mailing.state} onChange={e=>update('mailing','state',e.target.value)} />
           </Field>
           <Field label="ZIP">
-            <input value={form.mailing.zip} onChange={e=>update('mailing','zip',e.target.value)} />
+            <input type="text" inputMode="numeric" value={form.mailing.zip} onChange={e=>update('mailing','zip',e.target.value)} />
           </Field>
         </section>
       )}
@@ -132,13 +134,13 @@ export default function I129fWizard() {
         <section style={{display:'grid', gap:10}}>
           <h3 style={{margin:0}}>Beneficiary</h3>
           <Field label="Family name (last)">
-            <input value={form.beneficiary.lastName} onChange={e=>update('beneficiary','lastName',e.target.value)} />
+            <input type="text" value={form.beneficiary.lastName} onChange={e=>update('beneficiary','lastName',e.target.value)} />
           </Field>
           <Field label="Given name (first)">
-            <input value={form.beneficiary.firstName} onChange={e=>update('beneficiary','firstName',e.target.value)} />
+            <input type="text" value={form.beneficiary.firstName} onChange={e=>update('beneficiary','firstName',e.target.value)} />
           </Field>
           <Field label="Middle name">
-            <input value={form.beneficiary.middleName} onChange={e=>update('beneficiary','middleName',e.target.value)} />
+            <input type="text" value={form.beneficiary.middleName} onChange={e=>update('beneficiary','middleName',e.target.value)} />
           </Field>
         </section>
       )}
@@ -181,6 +183,7 @@ export default function I129fWizard() {
   );
 }
 
+// IMPORTANT: minWidth:0 here fixes the “1 character” issue in grid/flex
 function Field({ label, children }) {
   return (
     <label className="small" style={{display:'grid', gap:6, minWidth:0}}>
