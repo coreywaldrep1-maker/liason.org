@@ -1,39 +1,26 @@
 // app/api/i129f/pdf/route.js
-export const runtime = 'nodejs';
-
 import { NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
-import { verifyJWT } from '@/lib/auth';
-import { PDFDocument } from 'pdf-lib';
+import { verifyJWT } from '@/lib/auth'; // <-- make sure it's a named import
+import fs from 'fs/promises';
+import path from 'path';
 
-const sql = neon(process.env.DATABASE_URL);
+export const runtime = 'nodejs'; // we need Node APIs for fs/pdf work
 
 export async function GET(req) {
   try {
-    // must be logged in
-    const user = await verifyJWT(req);
+    // require logged-in user
+    await verifyJWT(req);
 
-    // load saved data (we'll wire mapping next)
-    const rows = await sql`SELECT data FROM i129f_entries WHERE user_id = ${user.id} LIMIT 1`;
-    const data = rows[0]?.data || {};
+    // serve the base PDF for now (mapping can be added after save works)
+    const filePath = path.join(process.cwd(), 'public', 'i-129f.pdf');
+    const data = await fs.readFile(filePath);
 
-    // Fetch the AcroForm PDF from /public (must exist in your repo at /public/i-129f.pdf)
-    const pdfUrl = new URL('/i-129f.pdf', req.nextUrl.origin);
-    const res = await fetch(pdfUrl);
-    if (!res.ok) throw new Error('Missing /public/i-129f.pdf (GET ' + pdfUrl + ' returned ' + res.status + ')');
-    const bytes = await res.arrayBuffer();
-
-    // Keep it as editable AcroForm for now (users can tweak after download)
-    const pdf = await PDFDocument.load(bytes);
-
-    // (placeholder: this is where we’ll fill fields later using pdf.getForm())
-
-    const out = await pdf.save();
-    return new NextResponse(out, {
+    return new NextResponse(data, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': 'attachment; filename="i-129f.pdf"',
+        'Cache-Control': 'no-store',
       },
     });
   } catch (e) {
