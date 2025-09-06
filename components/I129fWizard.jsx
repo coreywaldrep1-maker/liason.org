@@ -250,11 +250,10 @@ export default function I129fWizard() {
 }
 
 function Field({ label, children }) {
-  // minWidth:0 prevents “1ch” clamp in flex/grid contexts
   return (
-    <label className="small" style={{display:'grid', gap:6, minWidth:0}}>
+    <label className="small" style={{ display: 'grid', gap: 6, minWidth: 0 }}>
       <span>{label}</span>
-      <div style={{display:'grid', minWidth:0}}>
+      <div style={{ display: 'grid', minWidth: 0 }}>
         {children}
       </div>
     </label>
