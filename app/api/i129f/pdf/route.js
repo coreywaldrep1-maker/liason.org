@@ -1,6 +1,8 @@
 // app/api/i129f/pdf/route.js
 export const runtime = 'nodejs';
 
+import { readFile } from 'fs/promises';
+import path from 'path';
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { requireAuth } from '@/lib/auth';
