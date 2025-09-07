@@ -1,10 +1,12 @@
 export const runtime = 'nodejs';
+
 import { NextResponse } from 'next/server';
 import path from 'path';
 import { readFile } from 'fs/promises';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 
 async function loadTemplate() {
+  // Must exist at /public/i-129f.pdf
   const filePath = path.join(process.cwd(), 'public', 'i-129f.pdf');
   return await readFile(filePath);
 }
@@ -21,10 +23,10 @@ export async function GET() {
     for (const f of form.getFields()) {
       const name = f.getName();
       try {
-        const tf = form.getTextField(name);
-        tf.setText(`[${n}] ${name}`);
+        // Only text fields can be set like this. Others (checkbox/radio) are skipped.
+        form.getTextField(name).setText(`[${n}] ${name}`);
         n++;
-      } catch { /* non-text field (checkbox/radio) */ }
+      } catch {}
     }
 
     const out = await pdfDoc.save();
@@ -36,6 +38,6 @@ export async function GET() {
       },
     });
   } catch (e) {
-    return NextResponse.json({ ok:false, error:String(e) }, { status:500 });
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
