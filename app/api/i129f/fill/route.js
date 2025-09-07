@@ -17,21 +17,8 @@ const MAPPING = [
   { field: 'petitioner.fullName', page: 0, x: 90,  y: 700, size: 10 },
   { field: 'petitioner.dob',      page: 0, x: 90,  y: 682, size: 10 },
   { field: 'petitioner.ssn',      page: 0, x: 420, y: 700, size: 10 },
-  { field: 'beneficiary.fullName',page: 0, x: 90,  y: 645, size: 10 },
-  // add more as you confirm coords…
+  { field: 'beneficiary.fullName',page: 0, x: 90,  y: 645, size: 10 }
 ];
-
-// For quick tests without sending a body
-const SAMPLE_ANSWERS = {
-  petitioner: {
-    fullName: 'MARIA SANTOS',
-    dob: '1990-07-12',
-    ssn: '123-45-6789',
-  },
-  beneficiary: {
-    fullName: 'JOHN DOE',
-  },
-};
 
 async function buildPdf(answers) {
   const src = await fs.readFile(FORM_PATH);
@@ -50,7 +37,6 @@ async function buildPdf(answers) {
       size: m.size || 10,
       font: helv,
       color: rgb(0, 0, 0),
-      // maxWidth: 220, // uncomment if you want to constrain long text
     });
   }
 
