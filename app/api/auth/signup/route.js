@@ -1,29 +1,35 @@
 import { NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
+import { neon } from '@neondatabase/serverless';
 import bcrypt from 'bcryptjs';
+import { signJWT, setAuthCookie } from '@/lib/auth';
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
+const sql = neon(process.env.DATABASE_URL);
 
 export async function POST(req) {
   try {
     const { email, password } = await req.json();
     if (!email || !password) {
-      return NextResponse.json({ ok: false, error: 'Missing email or password' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: 'missing-fields' }, { status: 400 });
     }
-    const em = String(email).trim().toLowerCase();
+
+    const exists = await sql`SELECT id FROM users WHERE email = ${email}`;
+    if (exists.length) {
+      return NextResponse.json({ ok: false, error: 'email-taken' }, { status: 400 });
+    }
+
     const hash = await bcrypt.hash(password, 10);
-
-    const exists = await sql`SELECT 1 FROM users WHERE email = ${em} LIMIT 1`;
-    if (exists.length > 0) {
-      return NextResponse.json({ ok: false, error: 'Email already registered' }, { status: 400 });
-    }
-
-    await sql`
+    const rows = await sql`
       INSERT INTO users (email, password_hash)
-      VALUES (${em}, ${hash})
+      VALUES (${email}, ${hash})
+      RETURNING id, email
     `;
+    const user = rows[0];
 
-    return NextResponse.json({ ok: true });
+    const jwt = await signJWT({ id: user.id, email: user.email });
+    const res = NextResponse.json({ ok: true, user });
+    setAuthCookie(res, jwt);
+    return res;
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
