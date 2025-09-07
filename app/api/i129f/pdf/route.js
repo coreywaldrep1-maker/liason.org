@@ -1,149 +1,79 @@
 // app/api/i129f/pdf/route.js
 export const runtime = 'nodejs';
 
-import { readFile } from 'fs/promises';
-import path from 'path';
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { requireAuth } from '@/lib/auth';
-import {
-  PDFDocument,
-  PDFTextField,
-  PDFCheckBox,
-  PDFRadioGroup,
-  PDFDropdown,
-  PDFOptionList,
-} from 'pdf-lib';
+import { readFile } from 'fs/promises';
+import path from 'path';
+import { PDFDocument } from 'pdf-lib';
 
 const sql = neon(process.env.DATABASE_URL);
 
-// -- Small helpers -----------------------------------------------------------
-function get(obj, path, dflt = '') {
-  try {
-    return path.split('.').reduce((o, k) => (o ? o[k] : undefined), obj) ?? dflt;
-  } catch {
-    return dflt;
-  }
-}
-
-// US date helper (keeps the field editable)
-function fmtDateMMDDYYYY(str = '') {
-  if (!str) return '';
-  // accept yyyy-mm-dd or mm/dd/yyyy
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-    const [y, m, d] = str.split('-');
-    return `${m}/${d}/${y}`;
-  }
-  return str; // assume already mm/dd/yyyy
-}
-
-// Safe getField (no throw if not found)
-function getFieldSafe(form, name) {
-  try { return form.getField(name); } catch { return null; }
-}
-
-// Set any field by detecting its pdf-lib type
-function setAnyField(field, value) {
-  if (!field) return;
-  if (field instanceof PDFTextField) {
-    field.setText(value ?? '');
-  } else if (field instanceof PDFCheckBox) {
-    // treat truthy values (true, 'Y', 'Yes', 'on', '1', any non-empty) as checked
-    const v = typeof value === 'string' ? value.trim().toLowerCase() : value;
-    const shouldCheck =
-      v === true || v === 1 || v === '1' ||
-      v === 'y' || v === 'yes' || v === 'on' || (typeof v === 'string' && v.length > 0);
-    shouldCheck ? field.check() : field.uncheck();
-  } else if (field instanceof PDFRadioGroup) {
-    if (value) {
-      try { field.select(String(value)); } catch { /* ignore bad option */ }
-    }
-  } else if (field instanceof PDFDropdown || field instanceof PDFOptionList) {
-    if (value) {
-      try { field.select(String(value)); } catch { /* ignore */ }
-    }
-  } else {
-    // Unknown field type: ignore silently
-  }
-}
-
-// If your template is in public/i-129f.pdf
 async function loadTemplate() {
-  const url = new URL('../../../../public/i-129f.pdf', import.meta.url);
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error('Template not found at public/i-129f.pdf');
-  return await resp.arrayBuffer();
+  // Reads /public/i-129f.pdf that you committed to the repo
+  const filePath = path.join(process.cwd(), 'public', 'i-129f.pdf');
+  return await readFile(filePath);
 }
 
-// Optional mapping for unit type -> checkbox index guess (Apt/Ste/Flr)
-// Adjust indices if your PDF uses different ch numbers.
-function unitTypeToCheckboxName(base, unitType) {
-  if (!unitType) return null;
-  const t = unitType.toLowerCase();
-  if (t.startsWith('apt')) return `${base}_Unit_p0_ch1`;
-  if (t.startsWith('ste') || t.startsWith('suite')) return `${base}_Unit_p0_ch2`;
-  if (t.startsWith('flr') || t.startsWith('floor')) return `${base}_Unit_p0_ch3`;
-  return null;
+// Safe helpers (don’t crash if a field name is missing in the PDF)
+function setText(form, name, value) {
+  try {
+    if (value == null || value === '') return;
+    const f = form.getTextField(name);
+    f.setText(String(value));
+  } catch {}
+}
+function setCheck(form, name, checked) {
+  try {
+    const f = form.getCheckBox(name);
+    if (checked) f.check(); else f.uncheck();
+  } catch {}
 }
 
-// -- Route -------------------------------------------------------------------
 export async function GET(req) {
   try {
-    // 1) Require auth (cookie is sent automatically on same-origin GET)
-    const user = await requireAuth(req); // throws if not logged in
+    const user = await requireAuth(req);
 
-    // 2) Load saved wizard data
+    // Pull saved data
     const rows = await sql`
       SELECT data
       FROM i129f_entries
       WHERE user_id = ${user.id}
       LIMIT 1
     `;
-    const data = rows.length ? rows[0].data || {} : {};
-    const petitioner = get(data, 'petitioner', {});
-    const mailing    = get(data, 'mailing', {});
-    const beneficiary= get(data, 'beneficiary', {});
-    const history    = get(data, 'history', {});
+    const data = rows[0]?.data || {};
 
-    // 3) Load PDF template
-    const bytes = await loadTemplate();
-    const pdfDoc = await PDFDocument.load(bytes);
-    const form = pdfDoc.getForm();
+    // Load template
+    const templateBytes = await loadTemplate();
+    const pdf = await PDFDocument.load(templateBytes);
+    const form = pdf.getForm();
 
-    // ---- Minimal initial mapping (expand as needed) -------------------------
-    // Petitioner names (adjust if your template uses Pt1Line7* instead)
-    setAnyField(getFieldSafe(form, 'Pt1Line6a_FamilyName'), petitioner.lastName);
-    setAnyField(getFieldSafe(form, 'Pt1Line6b_GivenName'), petitioner.firstName);
-    setAnyField(getFieldSafe(form, 'Pt1Line6c_MiddleName'), petitioner.middleName);
+    // ---- Minimal starter mapping (expand as you go) ----
+    // Petitioner (Part 1 – USCIS labels vary by revision; adjust if needed)
+    setText(form, 'Pt1Line6a_FamilyName', data.petitioner?.lastName);
+    setText(form, 'Pt1Line6b_GivenName',  data.petitioner?.firstName);
+    setText(form, 'Pt1Line6c_MiddleName', data.petitioner?.middleName);
 
-    // Mailing address
-    setAnyField(getFieldSafe(form, 'Pt1Line8_InCareofName'), ''); // if you capture it
-    setAnyField(getFieldSafe(form, 'Pt1Line8_StreetNumberName'), mailing.street);
-    setAnyField(getFieldSafe(form, 'Pt1Line8_AptSteFlrNumber'), mailing.unitNum);
-    setAnyField(getFieldSafe(form, 'Pt1Line8_CityOrTown'), mailing.city);
-    setAnyField(getFieldSafe(form, 'Pt1Line8_State'), mailing.state);
-    setAnyField(getFieldSafe(form, 'Pt1Line8_ZipCode'), mailing.zip);
-    setAnyField(getFieldSafe(form, 'Pt1Line8_Province'), mailing.province);
-    setAnyField(getFieldSafe(form, 'Pt1Line8_PostalCode'), mailing.postal);
-    setAnyField(getFieldSafe(form, 'Pt1Line8_Country'), mailing.country);
+    // Mailing address (Part 1, Line 8)
+    const m = data.mailing || {};
+    setText(form, 'Pt1Line8_StreetNumberName', m.street);
+    // Optional: if your PDF has a separate unit type checkbox, you can wire it later.
+    setText(form, 'Pt1Line8_AptSteFlrNumber', m.unitNum);
+    setText(form, 'Pt1Line8_CityOrTown', m.city);
+    setText(form, 'Pt1Line8_State', m.state);
+    setText(form, 'Pt1Line8_ZipCode', m.zip);
 
-    // Mailing unit type checkboxes (guessing ch1=Apt, ch2=Ste, ch3=Flr)
-    const unitBox = unitTypeToCheckboxName('Pt1Line8', mailing.unitType);
-    if (unitBox) setAnyField(getFieldSafe(form, unitBox), true);
+    // Beneficiary (Part 2)
+    setText(form, 'Pt2Line1a_FamilyName', data.beneficiary?.lastName);
+    setText(form, 'Pt2Line1b_GivenName',  data.beneficiary?.firstName);
+    setText(form, 'Pt2Line1c_MiddleName', data.beneficiary?.middleName);
 
-    // Beneficiary names (adjust field names as your template expects)
-    setAnyField(getFieldSafe(form, 'Pt2Line1a_FamilyName'), beneficiary.lastName);
-    setAnyField(getFieldSafe(form, 'Pt2Line1b_GivenName'), beneficiary.firstName);
-    setAnyField(getFieldSafe(form, 'Pt2Line1c_MiddleName'), beneficiary.middleName);
+    // If you want to keep the AcroForm editable by the user after download:
+    form.updateFieldAppearances();
 
-    // Example date fields (convert yyyy-mm-dd -> mm/dd/yyyy if needed)
-    // setAnyField(getFieldSafe(form, 'Pt1Line11_DateofBirth'), fmtDateMMDDYYYY(petitioner.dob));
-
-    // Keep fields editable (don’t flatten)
-    const out = await pdfDoc.save();
-
+    const out = await pdf.save();
     return new NextResponse(out, {
-      status: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': 'attachment; filename="i-129f.pdf"',
@@ -151,6 +81,6 @@ export async function GET(req) {
       },
     });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 400 });
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
