@@ -11,33 +11,28 @@ const STEPS = [
   { key: 'review', label: 'Review & download' },
 ];
 
-const DEFAULT_FORM = {
-  petitioner: { lastName:'', firstName:'', middleName:'' },
-  mailing: { street:'', unitType:'', unitNum:'', city:'', state:'', zip:'' },
-  beneficiary: { lastName:'', firstName:'', middleName:'' },
-  history: { howMet:'', dates:'', priorMarriages:'' },
-};
-
 export default function I129fWizard() {
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState(DEFAULT_FORM);
+  const [form, setForm] = useState({
+    petitioner: { lastName:'', firstName:'', middleName:'' },
+    mailing: { street:'', unitType:'', unitNum:'', city:'', state:'', zip:'' },
+    beneficiary: { lastName:'', firstName:'', middleName:'' },
+    history: { howMet:'', dates:'', priorMarriages:'' },
+  });
 
-  // ✅ LOAD saved data (cookies included so the server can see your auth cookie)
+  // Load saved data (IMPORTANT: include credentials so the server sees your cookie)
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/i129f/load', {
+        const resp = await fetch('/api/i129f/load', {
           cache: 'no-store',
           credentials: 'include',
         });
-        const j = await res.json().catch(() => null);
-        if (res.ok && j?.ok && j.data) {
-          setForm(prev => ({ ...prev, ...j.data }));
-        }
-      } catch {
-        // ignore load errors
-      }
+        if (!resp.ok) return;
+        const j = await resp.json();
+        if (j?.ok && j.data) setForm(prev => ({ ...prev, ...j.data }));
+      } catch {}
     })();
   }, []);
 
@@ -48,22 +43,21 @@ export default function I129fWizard() {
     }));
   }
 
-  // ✅ SAVE with credentials so auth cookie is sent
   async function save() {
     setBusy(true);
     try {
-      const res = await fetch('/api/i129f/save', {
+      const resp = await fetch('/api/i129f/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',            // <-- IMPORTANT
+        credentials: 'include',           // <— keep this
         body: JSON.stringify({ data: form }),
       });
-      const j = await res.json();
+      const j = await resp.json();
       if (!j?.ok) throw new Error(j?.error || 'Save failed');
       alert('Progress saved.');
     } catch (e) {
+      alert('Save failed. Please make sure you are logged in.');
       console.error(e);
-      alert('Save failed. Please make sure you are logged in and try again.');
     } finally {
       setBusy(false);
     }
@@ -98,13 +92,13 @@ export default function I129fWizard() {
           <h3 style={{margin:0}}>Petitioner</h3>
           <div className="small">Usually the U.S. citizen filing the petition.</div>
           <Field label="Family name (last)">
-            <input value={form.petitioner.lastName} onChange={e=>update('petitioner','lastName',e.target.value)} />
+            <input value={form.petitioner.lastName || ''} onChange={e=>update('petitioner','lastName',e.target.value)} />
           </Field>
           <Field label="Given name (first)">
-            <input value={form.petitioner.firstName} onChange={e=>update('petitioner','firstName',e.target.value)} />
+            <input value={form.petitioner.firstName || ''} onChange={e=>update('petitioner','firstName',e.target.value)} />
           </Field>
           <Field label="Middle name">
-            <input value={form.petitioner.middleName} onChange={e=>update('petitioner','middleName',e.target.value)} />
+            <input value={form.petitioner.middleName || ''} onChange={e=>update('petitioner','middleName',e.target.value)} />
           </Field>
         </section>
       )}
@@ -113,23 +107,27 @@ export default function I129fWizard() {
         <section style={{display:'grid', gap:10}}>
           <h3 style={{margin:0}}>Mailing address</h3>
           <Field label="Street number and name">
-            <input value={form.mailing.street} onChange={e=>update('mailing','street',e.target.value)} />
+            <input value={form.mailing.street || ''} onChange={e=>update('mailing','street',e.target.value)} />
           </Field>
-          <Field label="Unit type (Apt/Ste/Flr)">
-            <input value={form.mailing.unitType} onChange={e=>update('mailing','unitType',e.target.value)} />
-          </Field>
-          <Field label="Unit number">
-            <input value={form.mailing.unitNum} onChange={e=>update('mailing','unitNum',e.target.value)} />
-          </Field>
-          <Field label="City">
-            <input value={form.mailing.city} onChange={e=>update('mailing','city',e.target.value)} />
-          </Field>
-          <Field label="State">
-            <input value={form.mailing.state} onChange={e=>update('mailing','state',e.target.value)} />
-          </Field>
-          <Field label="ZIP">
-            <input value={form.mailing.zip} onChange={e=>update('mailing','zip',e.target.value)} />
-          </Field>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 2fr', gap:10}}>
+            <Field label="Unit type (Apt/Ste/Flr)">
+              <input value={form.mailing.unitType || ''} onChange={e=>update('mailing','unitType',e.target.value)} />
+            </Field>
+            <Field label="Unit number">
+              <input value={form.mailing.unitNum || ''} onChange={e=>update('mailing','unitNum',e.target.value)} />
+            </Field>
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'1.2fr 0.8fr 0.8fr', gap:10}}>
+            <Field label="City">
+              <input value={form.mailing.city || ''} onChange={e=>update('mailing','city',e.target.value)} />
+            </Field>
+            <Field label="State">
+              <input value={form.mailing.state || ''} onChange={e=>update('mailing','state',e.target.value)} />
+            </Field>
+            <Field label="ZIP">
+              <input value={form.mailing.zip || ''} onChange={e=>update('mailing','zip',e.target.value)} />
+            </Field>
+          </div>
         </section>
       )}
 
@@ -137,13 +135,13 @@ export default function I129fWizard() {
         <section style={{display:'grid', gap:10}}>
           <h3 style={{margin:0}}>Beneficiary</h3>
           <Field label="Family name (last)">
-            <input value={form.beneficiary.lastName} onChange={e=>update('beneficiary','lastName',e.target.value)} />
+            <input value={form.beneficiary.lastName || ''} onChange={e=>update('beneficiary','lastName',e.target.value)} />
           </Field>
           <Field label="Given name (first)">
-            <input value={form.beneficiary.firstName} onChange={e=>update('beneficiary','firstName',e.target.value)} />
+            <input value={form.beneficiary.firstName || ''} onChange={e=>update('beneficiary','firstName',e.target.value)} />
           </Field>
           <Field label="Middle name">
-            <input value={form.beneficiary.middleName} onChange={e=>update('beneficiary','middleName',e.target.value)} />
+            <input value={form.beneficiary.middleName || ''} onChange={e=>update('beneficiary','middleName',e.target.value)} />
           </Field>
         </section>
       )}
@@ -152,13 +150,13 @@ export default function I129fWizard() {
         <section style={{display:'grid', gap:10}}>
           <h3 style={{margin:0}}>Relationship & history</h3>
           <Field label="How did you meet? (short description)">
-            <textarea rows={4} value={form.history.howMet} onChange={e=>update('history','howMet',e.target.value)} />
+            <textarea rows={4} value={form.history.howMet || ''} onChange={e=>update('history','howMet',e.target.value)} />
           </Field>
           <Field label="Important dates (met/engaged/visited)">
-            <textarea rows={3} value={form.history.dates} onChange={e=>update('history','dates',e.target.value)} />
+            <textarea rows={3} value={form.history.dates || ''} onChange={e=>update('history','dates',e.target.value)} />
           </Field>
           <Field label="Prior marriages / divorces (if any)">
-            <textarea rows={3} value={form.history.priorMarriages} onChange={e=>update('history','priorMarriages',e.target.value)} />
+            <textarea rows={3} value={form.history.priorMarriages || ''} onChange={e=>update('history','priorMarriages',e.target.value)} />
           </Field>
         </section>
       )}
@@ -186,12 +184,11 @@ export default function I129fWizard() {
   );
 }
 
-// ✅ minWidth: 0 so inputs can grow normally inside grids/flex
 function Field({ label, children }) {
   return (
-    <label className="small" style={{ display: 'grid', gap: 6, minWidth: 0 }}>
+    <label className="small" style={{display:'grid', gap:6, minWidth:0}}>
       <span>{label}</span>
-      <div style={{ display: 'grid', minWidth: 0 }}>
+      <div style={{display:'grid', minWidth:0}}>
         {children}
       </div>
     </label>
