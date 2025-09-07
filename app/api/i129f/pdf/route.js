@@ -1,86 +1,72 @@
-// app/api/i129f/pdf/route.js
 export const runtime = 'nodejs';
-
 import { NextResponse } from 'next/server';
+import path from 'path';
+import { readFile } from 'fs/promises';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { neon } from '@neondatabase/serverless';
 import { requireAuth } from '@/lib/auth';
-import { readFile } from 'fs/promises';
-import path from 'path';
-import { PDFDocument } from 'pdf-lib';
-
 const sql = neon(process.env.DATABASE_URL);
 
 async function loadTemplate() {
-  // Reads /public/i-129f.pdf that you committed to the repo
   const filePath = path.join(process.cwd(), 'public', 'i-129f.pdf');
   return await readFile(filePath);
 }
+const get = (o, p) => p.reduce((a, k) => (a && a[k] !== undefined ? a[k] : undefined), o);
+const toMMDDYYYY = s => {
+  if (!s) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  return m ? `${m[2]}/${m[3]}/${m[1]}` : s;
+};
 
-// Safe helpers (don’t crash if a field name is missing in the PDF)
-function setText(form, name, value) {
-  try {
-    if (value == null || value === '') return;
-    const f = form.getTextField(name);
-    f.setText(String(value));
-  } catch {}
-}
-function setCheck(form, name, checked) {
-  try {
-    const f = form.getCheckBox(name);
-    if (checked) f.check(); else f.uncheck();
-  } catch {}
-}
+// Start with these; we’ll expand as you add more fields in the wizard
+const MAP = {
+  Pt1Line7a_FamilyName: ['petitioner','lastName'],
+  Pt1Line7b_GivenName:  ['petitioner','firstName'],
+  Pt1Line7c_MiddleName: ['petitioner','middleName'],
+
+  Pt1Line8_StreetNumberName: ['mailing','street'],
+  Pt1Line8_AptSteFlrNumber:  ['mailing','unitNum'],
+  Pt1Line8_CityOrTown:       ['mailing','city'],
+  Pt1Line8_State:            ['mailing','state'],
+  Pt1Line8_ZipCode:          ['mailing','zip'],
+
+  Pt2Line10a_FamilyName:     ['beneficiary','lastName'],
+  Pt2Line10b_GivenName:      ['beneficiary','firstName'],
+  Pt2Line10c_MiddleName:     ['beneficiary','middleName'],
+
+  Pt3Line4b_AdditionalInformation: ['history','howMet'],
+};
 
 export async function GET(req) {
   try {
     const user = await requireAuth(req);
-
-    // Pull saved data
-    const rows = await sql`
-      SELECT data
-      FROM i129f_entries
-      WHERE user_id = ${user.id}
-      LIMIT 1
-    `;
+    const rows = await sql`SELECT data FROM i129f_entries WHERE user_id = ${user.id} LIMIT 1`;
     const data = rows[0]?.data || {};
 
-    // Load template
-    const templateBytes = await loadTemplate();
-    const pdf = await PDFDocument.load(templateBytes);
-    const form = pdf.getForm();
+    const bytes = await loadTemplate();
+    const pdfDoc = await PDFDocument.load(bytes);
+    const form = pdfDoc.getForm();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    form.updateFieldAppearances(font);
 
-    // ---- Minimal starter mapping (expand as you go) ----
-    // Petitioner (Part 1 – USCIS labels vary by revision; adjust if needed)
-    setText(form, 'Pt1Line6a_FamilyName', data.petitioner?.lastName);
-    setText(form, 'Pt1Line6b_GivenName',  data.petitioner?.firstName);
-    setText(form, 'Pt1Line6c_MiddleName', data.petitioner?.middleName);
+    for (const [pdfName, pathArr] of Object.entries(MAP)) {
+      const raw = get(data, pathArr);
+      const val = typeof raw === 'string' ? raw : (raw ?? '');
+      try {
+        const tf = form.getTextField(pdfName);
+        tf.setText(/Date/i.test(pdfName) ? toMMDDYYYY(val) : String(val));
+      } catch {}
+    }
 
-    // Mailing address (Part 1, Line 8)
-    const m = data.mailing || {};
-    setText(form, 'Pt1Line8_StreetNumberName', m.street);
-    // Optional: if your PDF has a separate unit type checkbox, you can wire it later.
-    setText(form, 'Pt1Line8_AptSteFlrNumber', m.unitNum);
-    setText(form, 'Pt1Line8_CityOrTown', m.city);
-    setText(form, 'Pt1Line8_State', m.state);
-    setText(form, 'Pt1Line8_ZipCode', m.zip);
-
-    // Beneficiary (Part 2)
-    setText(form, 'Pt2Line1a_FamilyName', data.beneficiary?.lastName);
-    setText(form, 'Pt2Line1b_GivenName',  data.beneficiary?.firstName);
-    setText(form, 'Pt2Line1c_MiddleName', data.beneficiary?.middleName);
-
-    // If you want to keep the AcroForm editable by the user after download:
-    form.updateFieldAppearances();
-
-    const out = await pdf.save();
+    const out = await pdfDoc.save();
     return new NextResponse(out, {
+      status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="i-129f.pdf"',
-        'Cache-Control': 'no-store',
+        'Content-Disposition': 'attachment; filename="i-129f-filled.pdf"',
       },
     });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    return NextResponse.json({ ok:false, error:String(e) }, { status:500 });
   }
 }
