@@ -1,8 +1,11 @@
+// app/api/auth/logout/route.js
 import { NextResponse } from 'next/server';
-import { removeAuthCookie } from '@/lib/auth';
 
 export async function POST() {
-  const res = NextResponse.json({ ok: true });
-  removeAuthCookie(res);
-  return res;
+  const response = NextResponse.json({ ok: true });
+  
+  // Clear the auth cookie
+  response.cookies.delete('liason_token');
+  
+  return response;
 }
