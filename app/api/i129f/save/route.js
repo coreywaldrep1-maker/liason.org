@@ -1,35 +1,30 @@
-// app/api/i129f/save/route.js
 import { NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
+import { neon } from '@neondatabase/serverless';
 import { verifyJWT } from '@/lib/auth';
 
-export const runtime = 'edge';
+const sql = neon(process.env.DATABASE_URL);
 
 export async function POST(req) {
   try {
     const user = await verifyJWT(req);
     if (!user?.id) {
-      return NextResponse.json(
-        { ok: false, error: 'Not authenticated' },
-        { status: 401 }
-      );
+      return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401 });
     }
 
-    const body = await req.json();
-    const data = body?.data || {};
+    const body = await req.json().catch(() => ({}));
+    const data = body?.data && typeof body.data === 'object' ? body.data : {};
 
     await sql`
-      INSERT INTO i129f_forms (user_id, data, updated_at)
-      VALUES (${user.id}, ${sql.json(data)}, NOW())
+      INSERT INTO i129f_forms (user_id, data)
+      VALUES (${user.id}, ${sql.json(data)})
       ON CONFLICT (user_id) DO UPDATE
-      SET data = EXCLUDED.data, updated_at = NOW()
+      SET data = EXCLUDED.data,
+          updated_at = NOW()
     `;
 
     return NextResponse.json({ ok: true });
+
   } catch (e) {
-    return NextResponse.json(
-      { ok: false, error: String(e) },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
