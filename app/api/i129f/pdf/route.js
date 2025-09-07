@@ -1,13 +1,12 @@
-// app/api/i129f/pdf/route.js
-// Node runtime because we need FS + pdf-lib
-export const runtime = 'nodejs';
-
 import { NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
 import { requireAuth } from '@/lib/auth';
+import { neon } from '@neondatabase/serverless';
 import { PDFDocument } from 'pdf-lib';
 import fs from 'fs/promises';
 import path from 'path';
+import { buildPdfData } from '@/lib/i129f-map';
+
+export const runtime = 'nodejs';
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -15,59 +14,52 @@ export async function GET(req) {
   try {
     const user = await requireAuth(req);
 
-    // 1) Load saved data
-    const rows = await sql`
-      SELECT data
-      FROM i129f_entries
-      WHERE user_id = ${user.id}
-      LIMIT 1
-    `;
-    const data = rows[0]?.data || {};
+    // 1) Load saved wizard data
+    const rows = await sql`SELECT data FROM i129f_entries WHERE user_id = ${user.id} LIMIT 1`;
+    const form = rows?.[0]?.data || {};
 
-    // 2) Load the blank form from /public
+    // 2) Build flat { pdfFieldName: value } map
+    const pdfVals = buildPdfData(form);
+
+    // 3) Load your AcroForm PDF
     const pdfPath = path.join(process.cwd(), 'public', 'i-129f.pdf');
-    const bytes = await fs.readFile(pdfPath);
-    const doc = await PDFDocument.load(bytes);
-    const form = doc.getForm();
+    const pdfBytes = await fs.readFile(pdfPath);
 
-    // 3) Minimal mapping example (expand later)
-    const val = (s) => (s ?? '').toString();
+    // 4) Fill fields with pdf-lib
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const formAcro = pdfDoc.getForm();
 
-    const trySet = (name, text) => {
+    Object.entries(pdfVals).forEach(([fieldName, value]) => {
+      const f = formAcro.getFieldMaybe(fieldName) || safeFind(formAcro, fieldName);
+      if (!f) return;
       try {
-        const f = form.getTextField(name);
-        f.setText(text);
-      } catch {
-        /* field not found – ignore */
-      }
-    };
+        // text fields:
+        if (f.setText) f.setText(String(value));
+        // checkboxes/radio (if you add later):
+        if (typeof value === 'boolean' && f.check) value ? f.check() : f.uncheck();
+      } catch {}
+    });
 
-    // Petitioner name → common USCIS fields
-    trySet('Pt1Line7a_FamilyName',  val(data?.petitioner?.lastName));
-    trySet('Pt1Line7b_GivenName',   val(data?.petitioner?.firstName));
-    trySet('Pt1Line7c_MiddleName',  val(data?.petitioner?.middleName));
+    formAcro.updateFieldAppearances();
+    const out = await pdfDoc.save();
 
-    // Mailing address
-    trySet('Pt1Line8_StreetNumberName', val(data?.mailing?.street));
-    trySet('Pt1Line8_AptSteFlrNumber',  val(data?.mailing?.unitNum));
-    trySet('Pt1Line8_CityOrTown',       val(data?.mailing?.city));
-    trySet('Pt1Line8_State',            val(data?.mailing?.state));
-    trySet('Pt1Line8_ZipCode',          val(data?.mailing?.zip));
-
-    // Beneficiary name
-    trySet('Pt2Line1a_FamilyName', val(data?.beneficiary?.lastName));
-    trySet('Pt2Line1b_GivenName',  val(data?.beneficiary?.firstName));
-    trySet('Pt2Line1c_MiddleName', val(data?.beneficiary?.middleName));
-
-    // 4) Flatten more fields later; for now return filled doc
-    const out = await doc.save();
     return new NextResponse(out, {
+      status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="i-129f-filled.pdf"',
+        'Content-Disposition': 'attachment; filename="I-129F.pdf"',
       },
     });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 400 });
+  }
+}
+
+// Helper: pdf-lib doesn't have getFieldMaybe; this is a safe finder.
+function safeFind(form, name) {
+  try {
+    return form.getField(name);
+  } catch {
+    return null;
   }
 }
