@@ -1,8 +1,4 @@
 // app/api/i129f/route.js
-// Streams a filled I-129F PDF using your AcroForm template + latest saved data.
-
-export const runtime = 'nodejs';
-
 import { NextResponse } from 'next/server';
 import { readFile } from 'fs/promises';
 import path from 'path';
@@ -12,7 +8,7 @@ import * as jose from 'jose';
 
 const sql = neon(process.env.DATABASE_URL);
 
-// ✅ your actual file name
+// Your PDF template name
 const TEMPLATE_FILE = 'i-129f.pdf';
 const TEMPLATE_PATH = path.join(process.cwd(), 'public', 'forms', TEMPLATE_FILE);
 
@@ -36,7 +32,7 @@ async function getLatestFormData(request) {
 
     const rows = await sql`
       SELECT data
-      FROM i129f_forms
+      FROM i129f_forms 
       WHERE user_id = ${userId}
       ORDER BY updated_at DESC NULLS LAST
       LIMIT 1
@@ -47,44 +43,6 @@ async function getLatestFormData(request) {
   }
 }
 
-function fillField(field, value) {
-  if (value === undefined || value === null) return;
-  const yesish = v => (
-    v === true || v === 'true' || v === 1 || v === '1' ||
-    v === 'Y' || v === 'y' || v === 'Yes' || v === 'yes' || v === 'on'
-  );
-  try {
-    if (typeof field.setText === 'function') {
-      field.setText(String(value));
-      return;
-    }
-    if (typeof field.select === 'function') {
-      if (Array.isArray(value)) field.select(...value.map(String));
-      else field.select(String(value));
-      return;
-    }
-    if (typeof field.mark === 'function' && typeof field.unmark === 'function') {
-      if (yesish(value)) field.mark(); else field.unmark();
-      return;
-    }
-  } catch { /* ignore single field errors */ }
-}
-
-const MAPPING = {
-  // Add alias mappings if your PDF field names don’t match your JSON keys
-};
-
-function getByPath(obj, dotPath) {
-  if (!dotPath) return undefined;
-  const parts = dotPath.split('.');
-  let cur = obj;
-  for (const p of parts) {
-    if (cur && typeof cur === 'object' && p in cur) cur = cur[p];
-    else return undefined;
-  }
-  return cur;
-}
-
 export async function GET(request) {
   try {
     const templateBytes = await readFile(TEMPLATE_PATH);
@@ -93,14 +51,17 @@ export async function GET(request) {
     const form = pdfDoc.getForm();
     const data = (await getLatestFormData(request)) || {};
 
+    // Fill form fields from saved data
     for (const f of form.getFields()) {
       const name = f.getName();
       let val = getByPath(data, name);
-      if (val === undefined && MAPPING[name]) val = getByPath(data, MAPPING[name]);
       if (val !== undefined) fillField(f, val);
     }
 
+    // Flatten form
     form.flatten();
+    
+    // Generate PDF
     const out = await pdfDoc.save();
     return new NextResponse(out, {
       headers: {
