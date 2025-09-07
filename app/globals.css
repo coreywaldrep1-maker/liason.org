@@ -1,7 +1,4 @@
-/* Prevent 1-ch clamp in flex/grid */
-label.small, label.small > div { min-width: 0; }
-
-/* Make inputs expand properly */
+/* Ensure inputs/textarea are actually wide and don't clamp to 1ch */
 input[type="text"],
 input[type="email"],
 input[type="tel"],
@@ -15,3 +12,6 @@ textarea {
   border-radius: 8px;
   font: inherit;
 }
+
+/* Grid children can shrink */
+label.small > div { min-width: 0; }
