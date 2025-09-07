@@ -1,65 +1,60 @@
-import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
-import { neon } from '@neondatabase/serverless';
-import { PDFDocument } from 'pdf-lib';
-import fs from 'fs/promises';
-import path from 'path';
-import { buildPdfData } from '@/lib/i129f-map';
-
+// app/api/i129f/pdf/route.js
 export const runtime = 'nodejs';
+
+import { NextResponse } from 'next/server';
+import path from 'node:path';
+import fs from 'node:fs/promises';
+import { PDFDocument } from 'pdf-lib';
+import { neon } from '@neondatabase/serverless';
+import { requireAuth } from '@/lib/auth';
+import { WIZARD_TO_PDF, flatten } from '@/lib/i129f-mapping';
 
 const sql = neon(process.env.DATABASE_URL);
 
 export async function GET(req) {
   try {
-    const user = await requireAuth(req);
+    // 1) Auth
+    const user = await requireAuth(req); // throws if no cookie
+    const userId = user.id;
 
-    // 1) Load saved wizard data
-    const rows = await sql`SELECT data FROM i129f_entries WHERE user_id = ${user.id} LIMIT 1`;
-    const form = rows?.[0]?.data || {};
+    // 2) Load saved wizard data
+    const rows = await sql`SELECT data FROM i129f_entries WHERE user_id = ${userId} LIMIT 1`;
+    const data = rows.length ? rows[0].data : {};
+    const flat = flatten(data);
 
-    // 2) Build flat { pdfFieldName: value } map
-    const pdfVals = buildPdfData(form);
-
-    // 3) Load your AcroForm PDF
+    // 3) Load PDF base
     const pdfPath = path.join(process.cwd(), 'public', 'i-129f.pdf');
     const pdfBytes = await fs.readFile(pdfPath);
-
-    // 4) Fill fields with pdf-lib
     const pdfDoc = await PDFDocument.load(pdfBytes);
-    const formAcro = pdfDoc.getForm();
+    const form = pdfDoc.getForm();
 
-    Object.entries(pdfVals).forEach(([fieldName, value]) => {
-      const f = formAcro.getFieldMaybe(fieldName) || safeFind(formAcro, fieldName);
-      if (!f) return;
-      try {
-        // text fields:
-        if (f.setText) f.setText(String(value));
-        // checkboxes/radio (if you add later):
-        if (typeof value === 'boolean' && f.check) value ? f.check() : f.uncheck();
-      } catch {}
-    });
+    // 4) Fill mapped fields we know about
+    for (const [wizKey, pdfName] of Object.entries(WIZARD_TO_PDF)) {
+      const val = flat[wizKey];
+      if (val == null || val === '') continue;
 
-    formAcro.updateFieldAppearances();
-    const out = await pdfDoc.save();
+      const field = form.getTextField?.(pdfName) ||
+                    form.getFieldMaybe?.(pdfName) || // not a real API; safe fallback
+                    form.getField(pdfName);          // will throw if missing
 
-    return new NextResponse(out, {
+      // pdf-lib fields can be TextField, Dropdown, etc. Try setText if available.
+      if (field && field.setText) {
+        field.setText(String(val));
+      } else if (field && field.select) {
+        field.select(String(val));
+      }
+    }
+
+    // Keep fields editable (AcroForm intact)
+    const out = await pdfDoc.save(); // default keeps AcroForm, not flattened
+    return new NextResponse(Buffer.from(out), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="I-129F.pdf"',
+        'Content-Disposition': 'attachment; filename="i-129f-filled.pdf"',
       },
     });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 400 });
-  }
-}
-
-// Helper: pdf-lib doesn't have getFieldMaybe; this is a safe finder.
-function safeFind(form, name) {
-  try {
-    return form.getField(name);
-  } catch {
-    return null;
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
