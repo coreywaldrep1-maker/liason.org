@@ -1,59 +1,41 @@
-// app/api/i129f/debug-grid/route.js
-export const runtime = 'nodejs';            // ensure Node runtime (we use fs)
-export const dynamic = 'force-dynamic';
-
+export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
-import { headers } from 'next/headers';
-import { PDFDocument, rgb } from 'pdf-lib';
-import { promises as fs } from 'fs';
 import path from 'path';
+import { readFile } from 'fs/promises';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 
-async function loadPdfBytes() {
-  // 1) Try reading from the filesystem (public/forms/i-129f.pdf)
-  const fsPath = path.join(process.cwd(), 'public', 'forms', 'i-129f.pdf');
-  try {
-    return await fs.readFile(fsPath);
-  } catch (_) {
-    // 2) Fallback: fetch from the same deployed domain
-    const host = headers().get('host') || 'www.liason.org';
-    const proto = host.includes('localhost') ? 'http' : 'https';
-    const url = `${proto}://${host}/forms/i-129f.pdf`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Fetch ${url} failed with ${res.status}`);
-    return Buffer.from(await res.arrayBuffer());
-  }
+async function loadTemplate() {
+  const filePath = path.join(process.cwd(), 'public', 'i-129f.pdf');
+  return await readFile(filePath);
 }
 
 export async function GET() {
   try {
-    const bytes = await loadPdfBytes();
-    const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-    const pages = pdfDoc.getPages();
+    const bytes = await loadTemplate();
+    const pdfDoc = await PDFDocument.load(bytes);
+    const form = pdfDoc.getForm();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    form.updateFieldAppearances(font);
 
-    // draw a light grid using thin rectangles (avoids drawLine quirks)
-    for (const page of pages) {
-      const { width, height } = page.getSize();
-
-      for (let x = 0; x <= width; x += 50) {
-        page.drawRectangle({ x, y: 0, width: 0.5, height, color: rgb(0.88,0.88,0.88) });
-      }
-      for (let y = 0; y <= height; y += 50) {
-        page.drawRectangle({ x: 0, y, width, height: 0.5, color: rgb(0.88,0.88,0.88) });
-      }
+    let n = 1;
+    for (const f of form.getFields()) {
+      const name = f.getName();
+      try {
+        const tf = form.getTextField(name);
+        tf.setText(`[${n}] ${name}`);
+        n++;
+      } catch { /* non-text field (checkbox/radio) */ }
     }
 
     const out = await pdfDoc.save();
-    return new NextResponse(Buffer.from(out), {
+    return new NextResponse(out, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'inline; filename="i129f-grid.pdf"',
+        'Content-Disposition': 'attachment; filename="i-129f-field-numbers.pdf"',
       },
     });
-  } catch (err) {
-    return NextResponse.json(
-      { ok: false, where: 'debug-grid', error: err?.message || String(err) },
-      { status: 500 }
-    );
+  } catch (e) {
+    return NextResponse.json({ ok:false, error:String(e) }, { status:500 });
   }
 }
