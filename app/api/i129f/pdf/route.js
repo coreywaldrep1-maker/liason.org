@@ -1,10 +1,9 @@
-export const runtime = 'nodejs'; // must be Node for fs/pdf-lib
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
 import { neon } from '@neondatabase/serverless';
-import fs from 'fs/promises';
-import path from 'path';
+import { requireAuth } from '@/lib/auth';
 import { PDFDocument } from 'pdf-lib';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -12,53 +11,49 @@ export async function GET(req) {
   try {
     const user = await requireAuth(req);
 
-    // Load saved data
-    const rows = await sql`SELECT data FROM i129f_entries WHERE user_id = ${user.id}::uuid`;
+    const rows = await sql`
+      SELECT data FROM i129f_entries WHERE user_id = ${user.id}::uuid LIMIT 1
+    `;
     const data = rows[0]?.data || {};
 
-    // Load PDF template from /public
-    const templatePath = path.join(process.cwd(), 'public', 'i-129f.pdf');
-    const templateBytes = await fs.readFile(templatePath);
+    // Load template from public/i-129f.pdf
+    const pdfPath = path.join(process.cwd(), 'public', 'i-129f.pdf');
+    const bytes = await fs.readFile(pdfPath);
+    const pdfDoc = await PDFDocument.load(bytes);
+    const form = pdfDoc.getForm();
 
-    const pdf = await PDFDocument.load(templateBytes, { updateMetadata: false });
-    const form = pdf.getForm();
+    // Helper to set a field if present
+    function fill(name, value) {
+      if (value == null || value === '') return;
+      const f = form.getFieldMaybe?.(name) || form.getField(name); // pdf-lib v1.17.1 has getField; try-catch alternative
+      if (!f) return;
+      // Text field only here
+      if (f.setText) f.setText(String(value));
+    }
 
-    // ---- Minimal mapping to prove end-to-end ----
-    // Petitioner name -> Part 1 names
-    try {
-      form.getTextField('Pt1Line6a_FamilyName')?.setText(data?.petitioner?.lastName || '');
-      form.getTextField('Pt1Line6b_GivenName')?.setText(data?.petitioner?.firstName || '');
-      form.getTextField('Pt1Line6c_MiddleName')?.setText(data?.petitioner?.middleName || '');
-    } catch {}
+    // Example mappings (expand later):
+    fill('Pt1Line7a_FamilyName', data.petitioner?.lastName);
+    fill('Pt1Line7b_GivenName',  data.petitioner?.firstName);
+    fill('Pt1Line7c_MiddleName', data.petitioner?.middleName);
 
-    // Mailing address -> Part 1 Line 8*
-    try {
-      form.getTextField('Pt1Line8_StreetNumberName')?.setText(data?.mailing?.street || '');
-      form.getTextField('Pt1Line8_AptSteFlrNumber')?.setText(
-        [data?.mailing?.unitType, data?.mailing?.unitNum].filter(Boolean).join(' ')
-      );
-      form.getTextField('Pt1Line8_CityOrTown')?.setText(data?.mailing?.city || '');
-      form.getTextField('Pt1Line8_State')?.setText(data?.mailing?.state || '');
-      form.getTextField('Pt1Line8_ZipCode')?.setText(data?.mailing?.zip || '');
-    } catch {}
+    fill('Pt1Line8_StreetNumberName', data.mailing?.street);
+    fill('Pt1Line8_AptSteFlrNumber',  data.mailing?.unitNum);
+    fill('Pt1Line8_CityOrTown',       data.mailing?.city);
+    fill('Pt1Line8_State',            data.mailing?.state);
+    fill('Pt1Line8_ZipCode',          data.mailing?.zip);
 
-    // Beneficiary name -> Part 2 names
-    try {
-      form.getTextField('Pt2Line1a_FamilyName')?.setText(data?.beneficiary?.lastName || '');
-      form.getTextField('Pt2Line1b_GivenName')?.setText(data?.beneficiary?.firstName || '');
-      form.getTextField('Pt2Line1c_MiddleName')?.setText(data?.beneficiary?.middleName || '');
-    } catch {}
+    fill('Pt2Line10a_FamilyName', data.beneficiary?.lastName);
+    fill('Pt2Line10b_GivenName',  data.beneficiary?.firstName);
+    fill('Pt2Line10c_MiddleName', data.beneficiary?.middleName);
 
-    // IMPORTANT: Do NOT flatten, so the user can edit the AcroForm
-    // form.flatten();
+    form.updateFieldAppearances(); // ensure text renders
 
-    const out = await pdf.save(); // Uint8Array
+    const out = await pdfDoc.save();
     return new NextResponse(out, {
-      status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="I-129F-filled.pdf"',
-      },
+        'Content-Disposition': 'attachment; filename="i-129f-filled.pdf"',
+      }
     });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
