@@ -6,6 +6,6 @@ export const runtime = 'edge';
 
 export async function POST() {
   const res = NextResponse.json({ ok: true });
-  clearAuthCookie(res); // sets liason_token=; Max-Age=0;
+  clearAuthCookie(res); // sets liason_token=; Path=/; HttpOnly; Max-Age=0
   return res;
 }
