@@ -12,14 +12,14 @@ export default function SiteHeader() {
     setAuthed(document.cookie.includes('liason_token='));
   }, []);
 
-  async function doLogout() {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-    } catch {}
-    // force cookie re-check
-    setAuthed(false);
+ async function doLogout() {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+  } finally {
+    // hard refresh to clear any client state
     window.location.href = '/';
   }
+}
 
   return (
     <header style={{borderBottom:'1px solid #e2e8f0', background:'#fff'}}>
