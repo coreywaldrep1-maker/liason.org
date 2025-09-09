@@ -1,10 +1,10 @@
 // app/api/i129f/pdf-debug/route.js
 export const runtime = 'nodejs';
 
-import path from 'path';
-import { readFile } from 'fs/promises';
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { NextResponse } from 'next/server';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
 
 async function loadTemplate() {
   const filePath = path.join(process.cwd(), 'public', 'i-129f.pdf');
@@ -13,47 +13,49 @@ async function loadTemplate() {
 
 export async function GET() {
   try {
-    // Load the existing I-129F PDF from /public
     const bytes = await loadTemplate();
     const pdfDoc = await PDFDocument.load(bytes);
-
-    // Extract field names using pdf-lib
     const form = pdfDoc.getForm();
     const fields = form.getFields();
-    const names = fields.map((f) => f.getName());
+    const pages = pdfDoc.getPages();
 
-    // Add a new page listing all fields with numbers
-    const page = pdfDoc.addPage([612, 792]); // US Letter portrait
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const title = 'I-129F Field Index (debug overlay)';
-    page.drawText(title, { x: 40, y: 752, size: 16, font, color: rgb(0, 0, 0) });
+    // Draw overlay for each widget
+    fields.forEach((f, idx) => {
+      const name = f.getName();
+      const widgets = f.acroField?.getWidgets?.() || [];
+      widgets.forEach((w, wi) => {
+        try {
+          const rect = w.getRectangle?.();
+          const page = w.getPage?.() || pages[0];
+          if (!rect || !page) return;
 
-    let y = 720;
-    let i = 1;
-    const lineHeight = 12;
+          const { x, y, width, height } = rect;
+          page.drawRectangle({
+            x, y, width, height,
+            borderColor: rgb(1, 0, 0),
+            borderWidth: 0.8,
+            color: undefined,
+            opacity: 0.0,
+          });
+          page.drawText(`${idx + 1}:${wi + 1}  ${name}`, {
+            x, y: y + height + 2,
+            size: 6,
+            color: rgb(1, 0, 0),
+          });
+        } catch {
+          // skip if widget lacks geometry
+        }
+      });
+    });
 
-    for (const name of names) {
-      const line = `[${i}] ${name}`;
-      page.drawText(line, { x: 40, y, size: 10, font, color: rgb(0, 0, 0) });
-      y -= lineHeight;
-      i++;
-      if (y < 40) {
-        // start a new page if we run out of vertical space
-        const p = pdfDoc.addPage([612, 792]);
-        p.drawText('Field Index (continued)', { x: 40, y: 752, size: 14, font });
-        y = 720;
-      }
-    }
-
-    const outBytes = await pdfDoc.save();
-    return new NextResponse(outBytes, {
-      status: 200,
+    const out = await pdfDoc.save();
+    return new NextResponse(out, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="i129f-field-index.pdf"',
+        'Content-Disposition': 'inline; filename="i-129f-debug.pdf"',
       },
     });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 400 });
   }
 }
