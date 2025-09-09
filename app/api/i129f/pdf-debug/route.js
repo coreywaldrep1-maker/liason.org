@@ -11,31 +11,42 @@ async function loadTemplate() {
   return await readFile(filePath);
 }
 
-/**
- * Try hard to find the page that a widget belongs to.
- * 1) High-level: widget.getPage()
- * 2) Low-level: widget.dict/node['P'] -> compare with page.ref
- */
-function resolveWidgetPage(pdfDoc, widget) {
-  // 1) High-level
+// Try to resolve which page a widget belongs to
+function resolveWidgetPage(widget, pages) {
+  // 1) Preferred: widget.getPage()
   try {
-    const direct = widget.getPage?.();
-    if (direct) return direct;
+    if (typeof widget.getPage === 'function') {
+      const p = widget.getPage();
+      if (p) return p;
+    }
   } catch {}
 
-  // 2) Low-level: look up the 'P' (page) reference on the widget
+  // 2) Check the widget's 'P' (parent page) reference
   try {
-    const dict = widget.dict ?? widget.node; // pdf-lib versions differ
-    const pRef = dict?.get?.(PDFName.of('P'));
+    const pName = PDFName.of('P');
+    const pRef = widget.dict?.get?.(pName);
     if (pRef) {
-      const pages = pdfDoc.getPages();
-      for (const pg of pages) {
-        if (pg.ref === pRef) return pg;
+      for (const p of pages) {
+        if (p.ref?.equals?.(pRef) || p.ref === pRef) return p;
       }
     }
   } catch {}
 
-  return null; // don't blindly draw on page 0; better to skip than mislead
+  // 3) Scan each page's Annots for this widget
+  try {
+    const wRef = widget.ref || widget.dict?.ref;
+    if (wRef) {
+      for (const p of pages) {
+        const annots = p.node?.Annots?.();
+        if (!annots) continue;
+        const arr = annots.asArray?.() || [];
+        if (arr.some(a => a === wRef)) return p;
+      }
+    }
+  } catch {}
+
+  // Fallback to first page
+  return pages[0];
 }
 
 export async function GET() {
@@ -43,38 +54,50 @@ export async function GET() {
     const bytes = await loadTemplate();
     const pdfDoc = await PDFDocument.load(bytes);
     const form = pdfDoc.getForm();
+    const pages = pdfDoc.getPages();
     const fields = form.getFields();
 
-    // For each field, draw a red rectangle and tiny label on the correct page
-    fields.forEach((field, idx) => {
+    fields.forEach((field, fieldIdx) => {
       const name = field.getName();
-      // pdf-lib low-level widgets for this field:
-      const widgets = field.acroField?.getWidgets?.() || [];
+
+      // pdf-lib v1.17+: widgets via acroField.getWidgets()
+      const widgets =
+        (field.acroField && typeof field.acroField.getWidgets === 'function'
+          ? field.acroField.getWidgets()
+          : typeof field.getWidgets === 'function'
+          ? field.getWidgets()
+          : []) || [];
 
       widgets.forEach((w, wi) => {
-        // rectangle
-        let rect;
         try {
-          rect = w.getRectangle?.(); // { x, y, width, height }
-        } catch {}
-        if (!rect || typeof rect.x !== 'number') return;
+          const rect = typeof w.getRectangle === 'function' ? w.getRectangle() : null;
+          if (!rect) return;
 
-        const page = resolveWidgetPage(pdfDoc, w);
-        if (!page) return; // skip if we cannot resolve a page for this widget
+          const page = resolveWidgetPage(w, pages);
+          const { x, y, width, height } = rect;
 
-        // draw the overlay on the resolved page
-        page.drawRectangle({
-          x: rect.x, y: rect.y, width: rect.width, height: rect.height,
-          borderColor: rgb(1, 0, 0),
-          borderWidth: 0.8,
-          opacity: 0.0, // stroke only
-        });
-        page.drawText(`${idx + 1}:${wi + 1}  ${name}`, {
-          x: rect.x,
-          y: rect.y + rect.height + 2,
-          size: 6,
-          color: rgb(1, 0, 0),
-        });
+          // Draw red box
+          page.drawRectangle({
+            x,
+            y,
+            width,
+            height,
+            borderColor: rgb(1, 0, 0),
+            borderWidth: 0.8,
+            opacity: 0,
+          });
+
+          // Label: "<page> • <fieldIndex>:<widgetIndex>  <name>"
+          const pageNum = pages.indexOf(page) + 1;
+          page.drawText(`${pageNum} • ${fieldIdx + 1}:${wi + 1}  ${name}`, {
+            x,
+            y: y + height + 2,
+            size: 6,
+            color: rgb(1, 0, 0),
+          });
+        } catch {
+          // ignore any odd widget
+        }
       });
     });
 
@@ -82,4 +105,10 @@ export async function GET() {
     return new NextResponse(out, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition':
+        'Content-Disposition': 'inline; filename="i-129f-debug.pdf"',
+      },
+    });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 400 });
+  }
+}
