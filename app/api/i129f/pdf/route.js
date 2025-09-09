@@ -1,19 +1,14 @@
 // app/api/i129f/pdf/route.js
-export const runtime = 'nodejs';           // <-- Node runtime so we can read from disk
-export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { NextResponse } from 'next/server';
-import path from 'path';
-import { readFile } from 'fs/promises';
 import { PDFDocument } from 'pdf-lib';
-import { neon } from '@neondatabase/serverless';
-
 import { requireAuth } from '@/lib/auth';
-import { applyI129fMapping } from '@/lib/i129f-mapping'; // <-- ✅ the missing import
+import { sql } from '@/lib/db';
+import { applyI129fMapping } from '@/lib/i129f-mapping';
 
-const sql = neon(process.env.DATABASE_URL);
-
-// Read /public/i-129f.pdf from the deployed filesystem
 async function loadTemplate() {
   const filePath = path.join(process.cwd(), 'public', 'i-129f.pdf');
   return await readFile(filePath);
@@ -21,50 +16,31 @@ async function loadTemplate() {
 
 export async function GET(req) {
   try {
-    // 1) Auth
-    const user = await requireAuth(req); // throws if no token
-    if (!user?.id) throw new Error('no-user');
+    const user = await requireAuth(req);
 
-    // 2) Load saved JSON (works whether user.id is number or string)
-    const { id } = user;
-    const rows = await sql`
-      SELECT data
-      FROM i129f_entries
-      WHERE user_id = ${id}
-      LIMIT 1
+    // Load saved JSON
+    const { rows } = await sql`
+      SELECT data FROM i129f_entries WHERE user_id = ${user.id} LIMIT 1
     `;
-    const savedJsonRaw = rows[0]?.data ?? {};
-    const savedJson = typeof savedJsonRaw === 'string'
-      ? safeParse(savedJsonRaw, {})
-      : (savedJsonRaw || {});
+    const saved = rows?.[0]?.data || {};
 
-    // 3) Load PDF, fill, (leave unflattened so users can still edit)
-    const tpl = await loadTemplate();
-    const pdfDoc = await PDFDocument.load(tpl);
+    // Load template & fill
+    const bytes = await loadTemplate();
+    const pdfDoc = await PDFDocument.load(bytes);
     const form = pdfDoc.getForm();
 
-    // <-- ✅ actually apply your mapping
-    applyI129fMapping(savedJson, form);
+    applyI129fMapping(saved, form);
 
-    // If you ever want to make fields uneditable, uncomment:
-    // form.flatten();
+    // Keep fields editable (no flatten); update appearances
+    const out = await pdfDoc.save({ updateFieldAppearances: true });
 
-    const out = await pdfDoc.save();
-
-    const res = new NextResponse(out, {
-      status: 200,
+    return new NextResponse(out, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="I-129F-filled.pdf"',
-        'Cache-Control': 'no-store',
+        'Content-Disposition': 'inline; filename="i-129f-filled.pdf"',
       },
     });
-    return res;
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 400 });
   }
-}
-
-function safeParse(s, fallback) {
-  try { return JSON.parse(s); } catch { return fallback; }
 }
