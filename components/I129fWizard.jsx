@@ -2,7 +2,188 @@
 
 import { useEffect, useState } from 'react';
 
-/** ---------- Helpers ---------- **/
+/* ----------------- utils & defaults ----------------- */
+
+const clone = (obj) =>
+  typeof structuredClone === 'function'
+    ? structuredClone(obj)
+    : JSON.parse(JSON.stringify(obj));
+
+const emptyName = () => ({ lastName: '', firstName: '', middleName: '' });
+const emptyAddress = () => ({
+  street: '', unitType: '', unitNum: '',
+  city: '', state: '', zip: '', province: '', postal: '',
+  country: 'United States',
+  from: '', to: ''
+});
+const emptyEmployment = () => ({
+  employerName: '', occupation: '',
+  street: '', unitType: '', unitNum: '',
+  city: '', state: '', zip: '', province: '', postal: '',
+  country: 'United States',
+  from: '', to: ''
+});
+
+const DEFAULT_FORM = {
+  petitioner: {
+    name: emptyName(),
+    aNumber: '', ssn: '', dob: '',
+    birth: { city: '', state: '', country: '' },
+    nationality: '',
+    otherNames: [],
+    addresses: [emptyAddress()],
+    employments: [emptyEmployment()],
+    contact: { daytimePhone: '', mobile: '', email: '' },
+  },
+  beneficiary: {
+    name: emptyName(),
+    aNumber: '', ssn: '', dob: '',
+    birth: { city: '', country: '' },
+    nationality: '',
+    parents: {
+      parent1: { ...emptyName(), country: '' },
+      parent2: { ...emptyName(), country: '' },
+    },
+    otherNames: [],
+    addresses: [emptyAddress()],
+    employments: [emptyEmployment()],
+    entry: {
+      lastArrivedAs: '', i94: '',
+      arrivalDate: '', expiryDate: '',
+      passportNumber: '', travelDocNumber: '',
+      countryOfIssuance: '', passportExp: '',
+    },
+    contact: { daytimePhone: '' },
+    relationshipToPetitioner: '',
+  },
+  relationship: {
+    metInLastTwoYears: 'yes',
+    howMet: '',
+    keyDates: '',
+    priorMarriages: '',
+    imb: {
+      usedBroker: 'no',
+      name: '',
+      contactFamily: '',
+      contactGiven: '',
+      orgName: '',
+      website: '',
+      street: '', unitNum: '', city: '', state: '', zip: '', province: '', postal: '', country: '',
+      phone: '',
+    },
+  },
+  signatures: {
+    petitioner: { daytimePhone: '', mobile: '', email: '', date: '' },
+    beneficiary: { daytimePhone: '' },
+  },
+  interpreter: {
+    used: 'no',
+    name: { lastName: '', firstName: '' },
+    business: '',
+    daytimePhone: '',
+    email: '',
+    language: '',
+    date: '',
+  },
+  preparer: {
+    used: 'no',
+    name: { lastName: '', firstName: '' },
+    business: '',
+    daytimePhone: '',
+    mobile: '',
+    email: '',
+    date: '',
+  },
+};
+
+const normalizeName = (n = {}) => ({ ...emptyName(), ...n });
+const normalizeAddress = (a = {}) => ({ ...emptyAddress(), ...a, country: a.country || 'United States' });
+const normalizeEmployment = (e = {}) => ({ ...emptyEmployment(), ...e, country: e.country || 'United States' });
+
+function normalizeForm(raw) {
+  const f = clone(DEFAULT_FORM);
+  if (!raw || typeof raw !== 'object') return f;
+
+  // Petitioner
+  if (raw.petitioner && typeof raw.petitioner === 'object') {
+    const p = raw.petitioner;
+    f.petitioner = { ...f.petitioner, ...p };
+    f.petitioner.name = normalizeName(p.name);
+    f.petitioner.birth = { ...f.petitioner.birth, ...(p.birth || {}) };
+    f.petitioner.otherNames = Array.isArray(p.otherNames) ? p.otherNames.map(normalizeName) : [];
+    f.petitioner.addresses = Array.isArray(p.addresses) && p.addresses.length
+      ? p.addresses.map(normalizeAddress)
+      : [emptyAddress()];
+    f.petitioner.employments = Array.isArray(p.employments) && p.employments.length
+      ? p.employments.map(normalizeEmployment)
+      : [emptyEmployment()];
+    f.petitioner.contact = { ...f.petitioner.contact, ...(p.contact || {}) };
+  }
+
+  // Beneficiary
+  if (raw.beneficiary && typeof raw.beneficiary === 'object') {
+    const b = raw.beneficiary;
+    f.beneficiary = { ...f.beneficiary, ...b };
+    f.beneficiary.name = normalizeName(b.name);
+    f.beneficiary.birth = { ...f.beneficiary.birth, ...(b.birth || {}) };
+    f.beneficiary.nationality = b.nationality || f.beneficiary.nationality;
+
+    const bp1 = (b.parents && b.parents.parent1) || {};
+    const bp2 = (b.parents && b.parents.parent2) || {};
+    f.beneficiary.parents = {
+      parent1: { ...emptyName(), country: '', ...bp1 },
+      parent2: { ...emptyName(), country: '', ...bp2 },
+    };
+
+    f.beneficiary.otherNames = Array.isArray(b.otherNames) ? b.otherNames.map(normalizeName) : [];
+    f.beneficiary.addresses = Array.isArray(b.addresses) && b.addresses.length
+      ? b.addresses.map(normalizeAddress)
+      : [emptyAddress()];
+    f.beneficiary.employments = Array.isArray(b.employments) && b.employments.length
+      ? b.employments.map(normalizeEmployment)
+      : [emptyEmployment()];
+
+    f.beneficiary.entry = { ...f.beneficiary.entry, ...(b.entry || {}) };
+    f.beneficiary.contact = { ...f.beneficiary.contact, ...(b.contact || {}) };
+    if (b.relationshipToPetitioner) f.beneficiary.relationshipToPetitioner = b.relationshipToPetitioner;
+  }
+
+  // Relationship
+  if (raw.relationship && typeof raw.relationship === 'object') {
+    const r = raw.relationship;
+    f.relationship = { ...f.relationship, ...r };
+    f.relationship.imb = { ...f.relationship.imb, ...(r.imb || {}) };
+  }
+
+  // Signatures
+  if (raw.signatures && typeof raw.signatures === 'object') {
+    const s = raw.signatures;
+    f.signatures.petitioner = { ...f.signatures.petitioner, ...(s.petitioner || {}) };
+    f.signatures.beneficiary = { ...f.signatures.beneficiary, ...(s.beneficiary || {}) };
+  }
+
+  // Interpreter
+  if (raw.interpreter && typeof raw.interpreter === 'object') {
+    f.interpreter = { ...f.interpreter, ...raw.interpreter };
+    f.interpreter.name = {
+      lastName: raw.interpreter.name?.lastName || '',
+      firstName: raw.interpreter.name?.firstName || '',
+    };
+  }
+
+  // Preparer
+  if (raw.preparer && typeof raw.preparer === 'object') {
+    f.preparer = { ...f.preparer, ...raw.preparer };
+    f.preparer.name = {
+      lastName: raw.preparer.name?.lastName || '',
+      firstName: raw.preparer.name?.firstName || '',
+    };
+  }
+
+  return f;
+}
+
+/* ----------------- layout helpers ----------------- */
 
 function Field({ label, children, hint }) {
   return (
@@ -28,20 +209,8 @@ function ButtonLink({ onClick, children }) {
   );
 }
 
-const emptyName = () => ({ lastName: '', firstName: '', middleName: '' });
-const emptyAddress = () => ({
-  street: '', unitType: '', unitNum: '',
-  city: '', state: '', zip: '', province: '', postal: '', country: 'United States',
-  from: '', to: ''
-});
-const emptyEmployment = () => ({
-  employerName: '', occupation: '',
-  street: '', unitType: '', unitNum: '',
-  city: '', state: '', zip: '', province: '', postal: '', country: 'United States',
-  from: '', to: ''
-});
+/* ----------------- steps ----------------- */
 
-/** ---------- Steps ---------- **/
 const STEPS = [
   { key: 'p1', label: 'Petitioner' },
   { key: 'p1_addr', label: 'Petitioner addresses' },
@@ -58,146 +227,76 @@ const STEPS = [
   { key: 'review', label: 'Review & download' },
 ];
 
+/* ----------------- component ----------------- */
+
 export default function I129fWizard() {
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState(DEFAULT_FORM);
 
-  const [form, setForm] = useState({
-    // Part 1 — Petitioner
-    petitioner: {
-      name: emptyName(),
-      aNumber: '', ssn: '', dob: '',
-      birth: { city: '', state: '', country: '' },
-      nationality: '',
-      otherNames: [], // [{lastName,firstName,middleName}]
-      addresses: [emptyAddress()], // last 5 years
-      employments: [emptyEmployment()], // last 5 years
-      contact: { daytimePhone: '', mobile: '', email: '' },
-    },
-
-    // Part 2 — Beneficiary
-    beneficiary: {
-      name: emptyName(),
-      aNumber: '', ssn: '', dob: '',
-      birth: { city: '', country: '' },
-      nationality: '',
-      parents: {
-        parent1: { ...emptyName(), country: '' },
-        parent2: { ...emptyName(), country: '' },
-      },
-      otherNames: [],
-      addresses: [emptyAddress()],
-      employments: [emptyEmployment()],
-      entry: {
-        lastArrivedAs: '', i94: '',
-        arrivalDate: '', expiryDate: '',
-        passportNumber: '', travelDocNumber: '',
-        countryOfIssuance: '', passportExp: '',
-      },
-      contact: { daytimePhone: '' },
-      relationshipToPetitioner: '', // fiance/spouse for K1/K3 context
-    },
-
-    // Part 3 — Relationship & eligibility
-    relationship: {
-      metInLastTwoYears: 'yes', // yes | no (with exemptions in Part 8 as needed)
-      howMet: '',
-      keyDates: '',
-      priorMarriages: '',
-      imb: {
-        usedBroker: 'no',
-        name: '',
-        contactFamily: '',
-        contactGiven: '',
-        orgName: '',
-        website: '',
-        street: '', unitNum: '', city: '', state: '', zip: '', province: '', postal: '', country: '',
-        phone: '',
-      },
-    },
-
-    // Part 4/5 — Contact & signatures
-    signatures: {
-      petitioner: { daytimePhone: '', mobile: '', email: '', date: '' },
-      beneficiary: { daytimePhone: '' }, // if needed here; primary is in beneficiary.contact
-    },
-
-    // Part 6 — Interpreter
-    interpreter: {
-      used: 'no',
-      name: { lastName: '', firstName: '' },
-      business: '',
-      daytimePhone: '',
-      email: '',
-      language: '',
-      date: '',
-    },
-
-    // Part 7 — Preparer
-    preparer: {
-      used: 'no',
-      name: { lastName: '', firstName: '' },
-      business: '',
-      daytimePhone: '',
-      mobile: '',
-      email: '',
-      date: '',
-    },
-  });
-
-  /** ---------- Safe updaters ---------- **/
+  // deep updaters
   const u = (path, value) => {
-    // path like: ['petitioner','name','lastName']
     setForm(prev => {
-      const copy = structuredClone(prev);
-      let node = copy;
+      const c = clone(prev);
+      let node = c;
       for (let i = 0; i < path.length - 1; i++) {
         const k = path[i];
-        node[k] = node[k] ?? {};
+        if (typeof node[k] !== 'object' || node[k] === null) node[k] = {};
         node = node[k];
       }
       node[path[path.length - 1]] = value;
-      return copy;
+      return c;
     });
   };
   const pushTo = (path, factory) => {
     setForm(prev => {
-      const copy = structuredClone(prev);
-      let node = copy;
+      const c = clone(prev);
+      let node = c;
       for (let i = 0; i < path.length; i++) {
         const k = path[i];
-        node[k] = node[k] ?? (i === path.length - 1 ? [] : {});
+        if (i === path.length - 1) {
+          if (!Array.isArray(node[k])) node[k] = [];
+        } else {
+          if (typeof node[k] !== 'object' || node[k] === null) node[k] = {};
+        }
         node = node[k];
       }
       node.push(factory());
-      return copy;
+      return c;
     });
   };
   const removeAt = (path, idx) => {
     setForm(prev => {
-      const copy = structuredClone(prev);
-      let node = copy;
-      for (let i = 0; i < path.length; i++) {
-        node = node[path[i]];
-      }
+      const c = clone(prev);
+      let node = c;
+      for (let i = 0; i < path.length; i++) node = node[path[i]];
       node.splice(idx, 1);
-      if (node.length === 0) node.push(path[path.length - 1].includes('addresses') ? emptyAddress() : emptyEmployment());
-      return copy;
+      if (node.length === 0) {
+        const lastKey = path[path.length - 1];
+        if (String(lastKey).includes('address')) node.push(emptyAddress());
+        else if (String(lastKey).includes('employ')) node.push(emptyEmployment());
+      }
+      return c;
     });
   };
 
-  /** ---------- Load & Save ---------- **/
+  // load
   useEffect(() => {
     (async () => {
       try {
         const resp = await fetch('/api/i129f/load', { cache: 'no-store', credentials: 'include' });
         if (!resp.ok) return;
         const j = await resp.json();
-        if (j?.ok && j.data) setForm(prev => ({ ...prev, ...j.data }));
-      } catch { /* ignore */ }
+        if (j?.ok && j.data) {
+          setForm(prev => normalizeForm({ ...prev, ...j.data }));
+        }
+      } catch {
+        // ignore
+      }
     })();
   }, []);
 
+  // save
   async function save() {
     setBusy(true);
     try {
@@ -221,7 +320,8 @@ export default function I129fWizard() {
   const next = () => setStep(s => Math.min(s + 1, STEPS.length - 1));
   const back = () => setStep(s => Math.max(s - 1, 0));
 
-  /** ---------- UI ---------- **/
+  /* ---------- UI sections (same as your last version, but safe now) ---------- */
+
   return (
     <div className="card" style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -287,59 +387,31 @@ export default function I129fWizard() {
             <input value={form.petitioner.nationality} onChange={e => u(['petitioner','nationality'], e.target.value)} />
           </Field>
 
+          {/* Other names */}
           <div className="card" style={{ display: 'grid', gap: 10 }}>
             <div style={{ fontWeight: 600 }}>Other Names Used (if any)</div>
             {form.petitioner.otherNames.map((n, i) => (
               <Row key={i} cols="1fr 1fr 1fr 80px">
                 <Field label="Family">
-                  <input value={n.lastName} onChange={e => {
-                    const v = e.target.value;
-                    setForm(p => {
-                      const c = structuredClone(p);
-                      c.petitioner.otherNames[i].lastName = v;
-                      return c;
-                    });
-                  }} />
+                  <input value={n.lastName} onChange={e => setForm(p => { const c=clone(p); c.petitioner.otherNames[i].lastName = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Given">
-                  <input value={n.firstName} onChange={e => {
-                    const v = e.target.value;
-                    setForm(p => {
-                      const c = structuredClone(p);
-                      c.petitioner.otherNames[i].firstName = v;
-                      return c;
-                    });
-                  }} />
+                  <input value={n.firstName} onChange={e => setForm(p => { const c=clone(p); c.petitioner.otherNames[i].firstName = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Middle">
-                  <input value={n.middleName} onChange={e => {
-                    const v = e.target.value;
-                    setForm(p => {
-                      const c = structuredClone(p);
-                      c.petitioner.otherNames[i].middleName = v;
-                      return c;
-                    });
-                  }} />
+                  <input value={n.middleName} onChange={e => setForm(p => { const c=clone(p); c.petitioner.otherNames[i].middleName = e.target.value; return c; })}/>
                 </Field>
                 <div style={{ display:'flex', alignItems:'end' }}>
-                  <ButtonLink onClick={() => setForm(p => {
-                    const c = structuredClone(p);
-                    c.petitioner.otherNames.splice(i,1);
-                    return c;
-                  })}>Remove</ButtonLink>
+                  <ButtonLink onClick={() => setForm(p => { const c=clone(p); c.petitioner.otherNames.splice(i,1); return c; })}>Remove</ButtonLink>
                 </div>
               </Row>
             ))}
-            <div><ButtonLink onClick={() => setForm(p => {
-              const c = structuredClone(p);
-              c.petitioner.otherNames.push(emptyName());
-              return c;
-            })}>+ Add another name</ButtonLink></div>
+            <div><ButtonLink onClick={() => setForm(p => { const c=clone(p); c.petitioner.otherNames.push(emptyName()); return c; })}>+ Add another name</ButtonLink></div>
           </div>
         </section>
       )}
 
-      {/* Part 1 addresses (last 5 years) */}
+      {/* Part 1 addresses */}
       {step === 1 && (
         <section style={{ display: 'grid', gap: 12 }}>
           <h3 style={{ margin: 0 }}>Petitioner — Addresses (last 5 years)</h3>
@@ -347,66 +419,44 @@ export default function I129fWizard() {
             <div className="card" key={i} style={{ display: 'grid', gap: 10 }}>
               <Row cols="1fr 140px 1fr 1fr">
                 <Field label="Street number & name">
-                  <input value={a.street} onChange={e => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.addresses[i].street = e.target.value; return c;
-                  })}/>
+                  <input value={a.street} onChange={e => setForm(p => { const c=clone(p); c.petitioner.addresses[i].street = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Unit type">
-                  <input value={a.unitType} onChange={e => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.addresses[i].unitType = e.target.value; return c;
-                  })}/>
+                  <input value={a.unitType} onChange={e => setForm(p => { const c=clone(p); c.petitioner.addresses[i].unitType = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Unit #">
-                  <input value={a.unitNum} onChange={e => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.addresses[i].unitNum = e.target.value; return c;
-                  })}/>
+                  <input value={a.unitNum} onChange={e => setForm(p => { const c=clone(p); c.petitioner.addresses[i].unitNum = e.target.value; return c; })}/>
                 </Field>
                 <div />
               </Row>
               <Row cols="1fr 0.6fr 0.6fr">
                 <Field label="City">
-                  <input value={a.city} onChange={e => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.addresses[i].city = e.target.value; return c;
-                  })}/>
+                  <input value={a.city} onChange={e => setForm(p => { const c=clone(p); c.petitioner.addresses[i].city = e.target.value; return c; })}/>
                 </Field>
                 <Field label="State/Province">
-                  <input value={a.state} onChange={e => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.addresses[i].state = e.target.value; return c;
-                  })}/>
+                  <input value={a.state} onChange={e => setForm(p => { const c=clone(p); c.petitioner.addresses[i].state = e.target.value; return c; })}/>
                 </Field>
                 <Field label="ZIP/Postal">
-                  <input value={a.zip} onChange={e => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.addresses[i].zip = e.target.value; return c;
-                  })}/>
+                  <input value={a.zip} onChange={e => setForm(p => { const c=clone(p); c.petitioner.addresses[i].zip = e.target.value; return c; })}/>
                 </Field>
               </Row>
               <Row cols="1fr 1fr 1fr">
                 <Field label="Province (if any)">
-                  <input value={a.province} onChange={e => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.addresses[i].province = e.target.value; return c;
-                  })}/>
+                  <input value={a.province} onChange={e => setForm(p => { const c=clone(p); c.petitioner.addresses[i].province = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Postal code (if any)">
-                  <input value={a.postal} onChange={e => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.addresses[i].postal = e.target.value; return c;
-                  })}/>
+                  <input value={a.postal} onChange={e => setForm(p => { const c=clone(p); c.petitioner.addresses[i].postal = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Country">
-                  <input value={a.country} onChange={e => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.addresses[i].country = e.target.value; return c;
-                  })}/>
+                  <input value={a.country} onChange={e => setForm(p => { const c=clone(p); c.petitioner.addresses[i].country = e.target.value; return c; })}/>
                 </Field>
               </Row>
               <Row cols="1fr 1fr">
                 <Field label="Date from">
-                  <input type="date" value={a.from} onChange={e => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.addresses[i].from = e.target.value; return c;
-                  })}/>
+                  <input type="date" value={a.from} onChange={e => setForm(p => { const c=clone(p); c.petitioner.addresses[i].from = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Date to (blank if current)">
-                  <input type="date" value={a.to} onChange={e => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.addresses[i].to = e.target.value; return c;
-                  })}/>
+                  <input type="date" value={a.to} onChange={e => setForm(p => { const c=clone(p); c.petitioner.addresses[i].to = e.target.value; return c; })}/>
                 </Field>
               </Row>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -421,7 +471,7 @@ export default function I129fWizard() {
         </section>
       )}
 
-      {/* Part 1 employment (last 5 years) */}
+      {/* Part 1 employment */}
       {step === 2 && (
         <section style={{ display: 'grid', gap: 12 }}>
           <h3 style={{ margin: 0 }}>Petitioner — Employment (last 5 years)</h3>
@@ -429,78 +479,52 @@ export default function I129fWizard() {
             <div className="card" key={i} style={{ display: 'grid', gap: 10 }}>
               <Row cols="1fr 1fr">
                 <Field label="Employer name">
-                  <input value={e.employerName} onChange={ev => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.employments[i].employerName = ev.target.value; return c;
-                  })}/>
+                  <input value={e.employerName} onChange={ev => setForm(p => { const c=clone(p); c.petitioner.employments[i].employerName = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="Occupation">
-                  <input value={e.occupation} onChange={ev => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.employments[i].occupation = ev.target.value; return c;
-                  })}/>
+                  <input value={e.occupation} onChange={ev => setForm(p => { const c=clone(p); c.petitioner.employments[i].occupation = ev.target.value; return c; })}/>
                 </Field>
               </Row>
               <Row cols="1fr 140px 1fr 1fr">
                 <Field label="Street number & name">
-                  <input value={e.street} onChange={ev => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.employments[i].street = ev.target.value; return c;
-                  })}/>
+                  <input value={e.street} onChange={ev => setForm(p => { const c=clone(p); c.petitioner.employments[i].street = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="Unit type">
-                  <input value={e.unitType} onChange={ev => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.employments[i].unitType = ev.target.value; return c;
-                  })}/>
+                  <input value={e.unitType} onChange={ev => setForm(p => { const c=clone(p); c.petitioner.employments[i].unitType = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="Unit #">
-                  <input value={e.unitNum} onChange={ev => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.employments[i].unitNum = ev.target.value; return c;
-                  })}/>
+                  <input value={e.unitNum} onChange={ev => setForm(p => { const c=clone(p); c.petitioner.employments[i].unitNum = ev.target.value; return c; })}/>
                 </Field>
                 <div />
               </Row>
               <Row cols="1fr 0.6fr 0.6fr">
                 <Field label="City">
-                  <input value={e.city} onChange={ev => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.employments[i].city = ev.target.value; return c;
-                  })}/>
+                  <input value={e.city} onChange={ev => setForm(p => { const c=clone(p); c.petitioner.employments[i].city = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="State/Province">
-                  <input value={e.state} onChange={ev => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.employments[i].state = ev.target.value; return c;
-                  })}/>
+                  <input value={e.state} onChange={ev => setForm(p => { const c=clone(p); c.petitioner.employments[i].state = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="ZIP/Postal">
-                  <input value={e.zip} onChange={ev => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.employments[i].zip = ev.target.value; return c;
-                  })}/>
+                  <input value={e.zip} onChange={ev => setForm(p => { const c=clone(p); c.petitioner.employments[i].zip = ev.target.value; return c; })}/>
                 </Field>
               </Row>
               <Row cols="1fr 1fr 1fr">
                 <Field label="Province (if any)">
-                  <input value={e.province} onChange={ev => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.employments[i].province = ev.target.value; return c;
-                  })}/>
+                  <input value={e.province} onChange={ev => setForm(p => { const c=clone(p); c.petitioner.employments[i].province = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="Postal code (if any)">
-                  <input value={e.postal} onChange={ev => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.employments[i].postal = ev.target.value; return c;
-                  })}/>
+                  <input value={e.postal} onChange={ev => setForm(p => { const c=clone(p); c.petitioner.employments[i].postal = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="Country">
-                  <input value={e.country} onChange={ev => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.employments[i].country = ev.target.value; return c;
-                  })}/>
+                  <input value={e.country} onChange={ev => setForm(p => { const c=clone(p); c.petitioner.employments[i].country = ev.target.value; return c; })}/>
                 </Field>
               </Row>
               <Row cols="1fr 1fr">
                 <Field label="Date from">
-                  <input type="date" value={e.from} onChange={ev => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.employments[i].from = ev.target.value; return c;
-                  })}/>
+                  <input type="date" value={e.from} onChange={ev => setForm(p => { const c=clone(p); c.petitioner.employments[i].from = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="Date to (blank if current)">
-                  <input type="date" value={e.to} onChange={ev => setForm(p => {
-                    const c = structuredClone(p); c.petitioner.employments[i].to = ev.target.value; return c;
-                  })}/>
+                  <input type="date" value={e.to} onChange={ev => setForm(p => { const c=clone(p); c.petitioner.employments[i].to = ev.target.value; return c; })}/>
                 </Field>
               </Row>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -593,20 +617,20 @@ export default function I129fWizard() {
             {form.beneficiary.otherNames.map((n, i) => (
               <Row key={i} cols="1fr 1fr 1fr 80px">
                 <Field label="Family">
-                  <input value={n.lastName} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.otherNames[i].lastName = e.target.value; return c; })}/>
+                  <input value={n.lastName} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.otherNames[i].lastName = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Given">
-                  <input value={n.firstName} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.otherNames[i].firstName = e.target.value; return c; })}/>
+                  <input value={n.firstName} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.otherNames[i].firstName = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Middle">
-                  <input value={n.middleName} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.otherNames[i].middleName = e.target.value; return c; })}/>
+                  <input value={n.middleName} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.otherNames[i].middleName = e.target.value; return c; })}/>
                 </Field>
                 <div style={{ display:'flex', alignItems:'end' }}>
-                  <ButtonLink onClick={() => setForm(p => { const c=structuredClone(p); c.beneficiary.otherNames.splice(i,1); return c; })}>Remove</ButtonLink>
+                  <ButtonLink onClick={() => setForm(p => { const c=clone(p); c.beneficiary.otherNames.splice(i,1); return c; })}>Remove</ButtonLink>
                 </div>
               </Row>
             ))}
-            <div><ButtonLink onClick={() => setForm(p => { const c=structuredClone(p); c.beneficiary.otherNames.push(emptyName()); return c; })}>+ Add another name</ButtonLink></div>
+            <div><ButtonLink onClick={() => setForm(p => { const c=clone(p); c.beneficiary.otherNames.push(emptyName()); return c; })}>+ Add another name</ButtonLink></div>
           </div>
 
           <Row cols="1fr 1fr 1fr">
@@ -622,7 +646,7 @@ export default function I129fWizard() {
           <div className="card" style={{ display: 'grid', gap: 10 }}>
             <div style={{ fontWeight: 600 }}>Last Entry / Passport</div>
             <Row cols="1fr 1fr 1fr">
-              <Field label="Last arrived as (class, e.g., B2, Visa Waiver)">
+              <Field label="Last arrived as (e.g., B2, VWP)">
                 <input value={form.beneficiary.entry.lastArrivedAs} onChange={e => u(['beneficiary','entry','lastArrivedAs'], e.target.value)} />
               </Field>
               <Field label="I-94 / Arrival-Departure #">
@@ -664,44 +688,44 @@ export default function I129fWizard() {
             <div className="card" key={i} style={{ display: 'grid', gap: 10 }}>
               <Row cols="1fr 140px 1fr 1fr">
                 <Field label="Street number & name">
-                  <input value={a.street} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.addresses[i].street = e.target.value; return c; })}/>
+                  <input value={a.street} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.addresses[i].street = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Unit type">
-                  <input value={a.unitType} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.addresses[i].unitType = e.target.value; return c; })}/>
+                  <input value={a.unitType} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.addresses[i].unitType = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Unit #">
-                  <input value={a.unitNum} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.addresses[i].unitNum = e.target.value; return c; })}/>
+                  <input value={a.unitNum} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.addresses[i].unitNum = e.target.value; return c; })}/>
                 </Field>
                 <div />
               </Row>
               <Row cols="1fr 0.6fr 0.6fr">
                 <Field label="City">
-                  <input value={a.city} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.addresses[i].city = e.target.value; return c; })}/>
+                  <input value={a.city} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.addresses[i].city = e.target.value; return c; })}/>
                 </Field>
                 <Field label="State/Province">
-                  <input value={a.state} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.addresses[i].state = e.target.value; return c; })}/>
+                  <input value={a.state} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.addresses[i].state = e.target.value; return c; })}/>
                 </Field>
                 <Field label="ZIP/Postal">
-                  <input value={a.zip} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.addresses[i].zip = e.target.value; return c; })}/>
+                  <input value={a.zip} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.addresses[i].zip = e.target.value; return c; })}/>
                 </Field>
               </Row>
               <Row cols="1fr 1fr 1fr">
                 <Field label="Province (if any)">
-                  <input value={a.province} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.addresses[i].province = e.target.value; return c; })}/>
+                  <input value={a.province} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.addresses[i].province = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Postal code (if any)">
-                  <input value={a.postal} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.addresses[i].postal = e.target.value; return c; })}/>
+                  <input value={a.postal} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.addresses[i].postal = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Country">
-                  <input value={a.country} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.addresses[i].country = e.target.value; return c; })}/>
+                  <input value={a.country} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.addresses[i].country = e.target.value; return c; })}/>
                 </Field>
               </Row>
               <Row cols="1fr 1fr">
                 <Field label="Date from">
-                  <input type="date" value={a.from} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.addresses[i].from = e.target.value; return c; })}/>
+                  <input type="date" value={a.from} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.addresses[i].from = e.target.value; return c; })}/>
                 </Field>
                 <Field label="Date to (blank if current)">
-                  <input type="date" value={a.to} onChange={e => setForm(p => { const c=structuredClone(p); c.beneficiary.addresses[i].to = e.target.value; return c; })}/>
+                  <input type="date" value={a.to} onChange={e => setForm(p => { const c=clone(p); c.beneficiary.addresses[i].to = e.target.value; return c; })}/>
                 </Field>
               </Row>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -724,52 +748,52 @@ export default function I129fWizard() {
             <div className="card" key={i} style={{ display: 'grid', gap: 10 }}>
               <Row cols="1fr 1fr">
                 <Field label="Employer name">
-                  <input value={e.employerName} onChange={ev => setForm(p => { const c=structuredClone(p); c.beneficiary.employments[i].employerName = ev.target.value; return c; })}/>
+                  <input value={e.employerName} onChange={ev => setForm(p => { const c=clone(p); c.beneficiary.employments[i].employerName = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="Occupation">
-                  <input value={e.occupation} onChange={ev => setForm(p => { const c=structuredClone(p); c.beneficiary.employments[i].occupation = ev.target.value; return c; })}/>
+                  <input value={e.occupation} onChange={ev => setForm(p => { const c=clone(p); c.beneficiary.employments[i].occupation = ev.target.value; return c; })}/>
                 </Field>
               </Row>
               <Row cols="1fr 140px 1fr 1fr">
                 <Field label="Street number & name">
-                  <input value={e.street} onChange={ev => setForm(p => { const c=structuredClone(p); c.beneficiary.employments[i].street = ev.target.value; return c; })}/>
+                  <input value={e.street} onChange={ev => setForm(p => { const c=clone(p); c.beneficiary.employments[i].street = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="Unit type">
-                  <input value={e.unitType} onChange={ev => setForm(p => { const c=structuredClone(p); c.beneficiary.employments[i].unitType = ev.target.value; return c; })}/>
+                  <input value={e.unitType} onChange={ev => setForm(p => { const c=clone(p); c.beneficiary.employments[i].unitType = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="Unit #">
-                  <input value={e.unitNum} onChange={ev => setForm(p => { const c=structuredClone(p); c.beneficiary.employments[i].unitNum = ev.target.value; return c; })}/>
+                  <input value={e.unitNum} onChange={ev => setForm(p => { const c=clone(p); c.beneficiary.employments[i].unitNum = ev.target.value; return c; })}/>
                 </Field>
                 <div />
               </Row>
               <Row cols="1fr 0.6fr 0.6fr">
                 <Field label="City">
-                  <input value={e.city} onChange={ev => setForm(p => { const c=structuredClone(p); c.beneficiary.employments[i].city = ev.target.value; return c; })}/>
+                  <input value={e.city} onChange={ev => setForm(p => { const c=clone(p); c.beneficiary.employments[i].city = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="State/Province">
-                  <input value={e.state} onChange={ev => setForm(p => { const c=structuredClone(p); c.beneficiary.employments[i].state = ev.target.value; return c; })}/>
+                  <input value={e.state} onChange={ev => setForm(p => { const c=clone(p); c.beneficiary.employments[i].state = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="ZIP/Postal">
-                  <input value={e.zip} onChange={ev => setForm(p => { const c=structuredClone(p); c.beneficiary.employments[i].zip = ev.target.value; return c; })}/>
+                  <input value={e.zip} onChange={ev => setForm(p => { const c=clone(p); c.beneficiary.employments[i].zip = ev.target.value; return c; })}/>
                 </Field>
               </Row>
               <Row cols="1fr 1fr 1fr">
                 <Field label="Province (if any)">
-                  <input value={e.province} onChange={ev => setForm(p => { const c=structuredClone(p); c.beneficiary.employments[i].province = ev.target.value; return c; })}/>
+                  <input value={e.province} onChange={ev => setForm(p => { const c=clone(p); c.beneficiary.employments[i].province = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="Postal code (if any)">
-                  <input value={e.postal} onChange={ev => setForm(p => { const c=structuredClone(p); c.beneficiary.employments[i].postal = ev.target.value; return c; })}/>
+                  <input value={e.postal} onChange={ev => setForm(p => { const c=clone(p); c.beneficiary.employments[i].postal = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="Country">
-                  <input value={e.country} onChange={ev => setForm(p => { const c=structuredClone(p); c.beneficiary.employments[i].country = ev.target.value; return c; })}/>
+                  <input value={e.country} onChange={ev => setForm(p => { const c=clone(p); c.beneficiary.employments[i].country = ev.target.value; return c; })}/>
                 </Field>
               </Row>
               <Row cols="1fr 1fr">
                 <Field label="Date from">
-                  <input type="date" value={e.from} onChange={ev => setForm(p => { const c=structuredClone(p); c.beneficiary.employments[i].from = ev.target.value; return c; })}/>
+                  <input type="date" value={e.from} onChange={ev => setForm(p => { const c=clone(p); c.beneficiary.employments[i].from = ev.target.value; return c; })}/>
                 </Field>
                 <Field label="Date to (blank if current)">
-                  <input type="date" value={e.to} onChange={ev => setForm(p => { const c=structuredClone(p); c.beneficiary.employments[i].to = ev.target.value; return c; })}/>
+                  <input type="date" value={e.to} onChange={ev => setForm(p => { const c=clone(p); c.beneficiary.employments[i].to = ev.target.value; return c; })}/>
                 </Field>
               </Row>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -874,7 +898,7 @@ export default function I129fWizard() {
         </section>
       )}
 
-      {/* Part 4/5 — Contact & signatures */}
+      {/* Part 4 & 5 */}
       {step === 7 && (
         <section style={{ display: 'grid', gap: 12 }}>
           <h3 style={{ margin: 0 }}>Part 4 & 5. Contact & Signatures</h3>
@@ -899,7 +923,7 @@ export default function I129fWizard() {
         </section>
       )}
 
-      {/* Part 6/7 — Interpreter & Preparer */}
+      {/* Part 6 & 7 */}
       {step === 8 && (
         <section style={{ display: 'grid', gap: 12 }}>
           <h3 style={{ margin: 0 }}>Part 6 & 7. Interpreter / Preparer</h3>
@@ -990,7 +1014,7 @@ export default function I129fWizard() {
         </section>
       )}
 
-      {/* Review */}
+      {/* Review & download */}
       {step === 9 && (
         <section style={{ display: 'grid', gap: 10 }}>
           <h3 style={{ margin: 0 }}>Review & download</h3>
