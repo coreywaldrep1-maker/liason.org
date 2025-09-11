@@ -1,4 +1,4 @@
-/* Ensure inputs/textarea are actually wide and don't clamp to 1ch */
+/* Keep once (avoid duplicates) */
 input[type="text"],
 input[type="email"],
 input[type="tel"],
@@ -12,6 +12,4 @@ textarea {
   border-radius: 8px;
   font: inherit;
 }
-
-/* Grid children can shrink */
 label.small > div { min-width: 0; }
