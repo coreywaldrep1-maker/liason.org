@@ -1,50 +1,58 @@
 // app/api/i129f/pdf/route.js
 export const runtime = 'nodejs';
 
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
-import { neon } from '@neondatabase/serverless';
 import { PDFDocument } from 'pdf-lib';
-import { readFile } from 'fs/promises';
-import path from 'path';
+
+import { requireAuth } from '@/lib/auth';
+import { sql } from '@/lib/db';
 import { applyI129fMapping } from '@/lib/i129f-mapping';
 
-const sql = neon(process.env.DATABASE_URL);
-
+// Reads /public/i-129f.pdf from the deployed filesystem
 async function loadTemplate() {
-  const p = path.join(process.cwd(), 'public', 'i-129f.pdf');
-  return await readFile(p);
+  const filePath = path.join(process.cwd(), 'public', 'i-129f.pdf');
+  return await readFile(filePath);
 }
 
 export async function GET(req) {
   try {
-    const user = await requireAuth(req);
+    // 1) Auth (throws if no cookie / bad token)
+    const user = await requireAuth(req); // returns { id, email }
 
+    // 2) Load saved wizard data (fallback to {})
+    // NOTE: user.id is an integer in your current DB. If you change it to UUID,
+    //       update both the table and the auth payload consistently.
     const rows = await sql`
-      SELECT data FROM i129f_entries WHERE user_id = ${user.id} LIMIT 1
+      SELECT data
+      FROM i129f_entries
+      WHERE user_id = ${user.id}
+      LIMIT 1
     `;
-    const saved = rows.length ? rows[0].data : {};
+    const saved = rows?.[0]?.data || {};
 
-    const bytes = await loadTemplate();
-    const pdf = await PDFDocument.load(bytes);
-    const form = pdf.getForm();
+    // 3) Load template PDF
+    const tplBytes = await loadTemplate();
 
-    // Apply our mapping
-    const { missing } = applyI129fMapping(saved, form);
+    // 4) Fill with mapping
+    const pdfDoc = await PDFDocument.load(tplBytes);
+    const form = pdfDoc.getForm();
 
-    // (optional) log missing fields server-side
-    if (missing.length) {
-      console.warn('[i129f] Missing PDF fields:', missing.slice(0, 5), `(+${Math.max(missing.length-5,0)} more)`);
-    }
+    // Safe: skips any fields that are missing or non-text
+    applyI129fMapping(saved, form);
 
-    const out = await pdf.save();
+    // 5) Return the filled PDF
+    const out = await pdfDoc.save();
     return new NextResponse(out, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="i-129f-filled.pdf"',
+        'Content-Disposition': 'attachment; filename="I-129F-filled.pdf"',
+        'Cache-Control': 'no-store',
       },
     });
-  } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 400 });
+  } catch (err) {
+    // Bubble up the actual error so you can see what's wrong
+    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }
