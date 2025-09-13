@@ -1,58 +1,88 @@
 // app/api/i129f/pdf/route.js
-export const runtime = 'nodejs';
-
-import path from 'node:path';
-import { readFile } from 'node:fs/promises';
 import { NextResponse } from 'next/server';
+import { readFile } from 'fs/promises';
+import path from 'path';
 import { PDFDocument } from 'pdf-lib';
-
 import { requireAuth } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { applyI129fMapping } from '@/lib/i129f-mapping';
 
-// Reads /public/i-129f.pdf from the deployed filesystem
+export const runtime = 'nodejs';
+
 async function loadTemplate() {
-  const filePath = path.join(process.cwd(), 'public', 'i-129f.pdf');
-  return await readFile(filePath);
+  const p = path.join(process.cwd(), 'public', 'i-129f.pdf');
+  return readFile(p);
+}
+
+// Try text -> checkbox -> radio
+function fillAnyField(pdfForm, name, value) {
+  // normalize common truthy strings for checkboxes
+  const truthy = v => {
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'number') return v !== 0;
+    if (typeof v === 'string') return ['y','yes','true','1','checked','on'].includes(v.trim().toLowerCase());
+    return false;
+  };
+
+  // 1) Text field
+  try {
+    const f = pdfForm.getTextField(name);
+    f.setText(value == null ? '' : String(value));
+    return true;
+  } catch {}
+
+  // 2) Checkbox
+  try {
+    const cb = pdfForm.getCheckBox(name);
+    if (truthy(value)) cb.check(); else cb.uncheck();
+    return true;
+  } catch {}
+
+  // 3) Radio group
+  try {
+    const rg = pdfForm.getRadioGroup(name);
+    if (value != null) rg.select(String(value));
+    return true;
+  } catch {}
+
+  // Not found or unsupported — ignore
+  return false;
 }
 
 export async function GET(req) {
   try {
-    // 1) Auth (throws if no cookie / bad token)
-    const user = await requireAuth(req); // returns { id, email }
+    const user = await requireAuth(req);
 
-    // 2) Load saved wizard data (fallback to {})
-    // NOTE: user.id is an integer in your current DB. If you change it to UUID,
-    //       update both the table and the auth payload consistently.
-    const rows = await sql`
-      SELECT data
-      FROM i129f_entries
-      WHERE user_id = ${user.id}
-      LIMIT 1
+    const { rows } = await sql`
+      SELECT data FROM i129f_entries
+      WHERE user_id = ${user.id} LIMIT 1
     `;
-    const saved = rows?.[0]?.data || {};
+    if (!rows?.length) {
+      return NextResponse.json({ ok: false, error: 'No saved data' }, { status: 400 });
+    }
+    const formJson = rows[0].data || {};
 
-    // 3) Load template PDF
-    const tplBytes = await loadTemplate();
+    const mapped = applyI129fMapping(formJson);
 
-    // 4) Fill with mapping
-    const pdfDoc = await PDFDocument.load(tplBytes);
-    const form = pdfDoc.getForm();
+    const bytes = await loadTemplate();
+    const pdf = await PDFDocument.load(bytes);
+    const form = pdf.getForm();
 
-    // Safe: skips any fields that are missing or non-text
-    applyI129fMapping(saved, form);
+    for (const [name, val] of Object.entries(mapped)) {
+      fillAnyField(form, name, val);
+    }
+    form.updateFieldAppearances();
 
-    // 5) Return the filled PDF
-    const out = await pdfDoc.save();
+    const out = await pdf.save(); // keep fields editable
     return new NextResponse(out, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="I-129F-filled.pdf"',
+        'Content-Disposition': 'attachment; filename="i-129f-filled.pdf"',
         'Cache-Control': 'no-store',
       },
     });
-  } catch (err) {
-    // Bubble up the actual error so you can see what's wrong
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
