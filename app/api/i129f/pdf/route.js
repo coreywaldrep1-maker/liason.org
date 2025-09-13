@@ -1,95 +1,80 @@
 // app/api/i129f/pdf/route.js
-import { NextResponse } from 'next/server';
-import { readFile } from 'fs/promises';
-import path from 'path';
-import { PDFDocument } from 'pdf-lib';
-import { requireAuth } from '@/lib/auth';
-import { sql } from '@/lib/db';
-import { applyI129fMapping } from '@/lib/i129f-mapping';
-
 export const runtime = 'nodejs';
 
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { NextResponse } from 'next/server';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
+
+import { requireAuth } from '@/lib/auth';
+import { sql } from '@/lib/db'; // <-- must be a named export { sql }
+import { applyI129fMapping } from '@/lib/i129f-mapping';
+
 async function loadTemplate() {
-  const p = path.join(process.cwd(), 'public', 'i-129f.pdf');
-  return readFile(p);
+  // Reads /public/i-129f.pdf from the deployed filesystem
+  const filePath = path.join(process.cwd(), 'public', 'i-129f.pdf');
+  return await readFile(filePath);
 }
 
-function truthy(v) {
-  if (typeof v === 'boolean') return v;
-  if (typeof v === 'number') return v !== 0;
-  if (typeof v === 'string') return ['y','yes','true','1','checked','on'].includes(v.trim().toLowerCase());
-  return false;
-}
-
-/** Try text, then checkbox, then radio */
-function fillAnyField(pdfForm, name, value) {
-  try { pdfForm.getTextField(name).setText(value == null ? '' : String(value)); return true; } catch {}
-  try { const cb = pdfForm.getCheckBox(name); truthy(value) ? cb.check() : cb.uncheck(); return true; } catch {}
-  try { pdfForm.getRadioGroup(name).select(String(value)); return true; } catch {}
-  return false;
-}
-
-async function renderPdfFromData(formJson) {
-  const mapped = applyI129fMapping(formJson);
-  const bytes = await loadTemplate();
-  const pdf = await PDFDocument.load(bytes);
-  const form = pdf.getForm();
-
-  for (const [name, val] of Object.entries(mapped)) {
-    fillAnyField(form, name, val);
-  }
-  form.updateFieldAppearances();
-  return pdf.save(); // keep fields editable
-}
-
-// GET -> from DB
 export async function GET(req) {
   try {
-    const user = await requireAuth(req);
+    // 1) Require auth (reads cookie, verifies JWT)
+    const user = await requireAuth(req); // throws if missing/invalid
+    if (!user?.id) {
+      return NextResponse.json({ ok: false, error: 'No user id' }, { status: 401 });
+    }
 
-    const { rows } = await sql`
-      SELECT data FROM i129f_entries
+    // 2) Load saved JSON for this user
+    //    Your table: i129f_entries(user_id INT PRIMARY KEY, data JSONB, updated_at TIMESTAMPTZ)
+    const rows = await sql`
+      SELECT data
+      FROM i129f_entries
       WHERE user_id = ${user.id}
       LIMIT 1
     `;
-    if (!rows?.length) {
-      return NextResponse.json({ ok: false, error: 'No saved data' }, { status: 400 });
+    const saved = rows?.[0]?.data || null;
+
+    if (!saved) {
+      // No saved data: still return a blank PDF so user can type
+      // (or change to return 404 JSON if you prefer)
+      const blankBytes = await loadTemplate();
+      return new NextResponse(blankBytes, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': 'inline; filename="i-129f-blank.pdf"',
+          'Cache-Control': 'no-store'
+        }
+      });
     }
-    const formJson = rows[0].data || {};
-    const out = await renderPdfFromData(formJson);
+
+    // 3) Load the template & fill
+    const templateBytes = await loadTemplate();
+    const pdfDoc = await PDFDocument.load(templateBytes);
+
+    const form = pdfDoc.getForm();
+
+    // 4) Apply your JSON -> PDF mapping
+    applyI129fMapping(saved, form);
+
+    // 5) Make values visible (update field appearances with a standard font)
+    const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    form.updateFieldAppearances(helv);
+
+    // (Optional) Keep the form editable (do NOT flatten)
+    // form.flatten(); // <= DO NOT call if you want users to edit later
+
+    // 6) Output bytes
+    const out = await pdfDoc.save({ useObjectStreams: false }); // safer for some viewers
 
     return new NextResponse(out, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="i-129f-filled.pdf"',
-        'Cache-Control': 'no-store',
-      },
+        'Content-Disposition': 'inline; filename="i-129f-filled.pdf"',
+        'Cache-Control': 'no-store'
+      }
     });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
-  }
-}
-
-// POST -> from current client JSON (no DB needed)
-export async function POST(req) {
-  try {
-    // still require auth so PDFs aren’t public
-    await requireAuth(req);
-
-    const body = await req.json().catch(() => ({}));
-    const formJson = body?.data || {};
-    const out = await renderPdfFromData(formJson);
-
-    return new NextResponse(out, {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="i-129f-filled.pdf"',
-        'Cache-Control': 'no-store',
-      },
-    });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+  } catch (err) {
+    console.error('[i129f/pdf] error:', err);
+    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }
