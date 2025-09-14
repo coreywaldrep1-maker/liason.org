@@ -2,33 +2,24 @@
 export const runtime = 'edge';
 
 import { NextResponse } from 'next/server';
+import { neon } from '@neondatabase/serverless';
 import { requireAuth } from '@/lib/auth';
-import { sql } from '@/lib/db';
 
-async function ensureTable() {
-  await sql`
-    CREATE TABLE IF NOT EXISTS i129f_entries (
-      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      data    JSONB    NOT NULL DEFAULT '{}'::jsonb,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-  `;
-}
+const sql = neon(process.env.DATABASE_URL);
 
 export async function GET(req) {
   try {
-    const user = await requireAuth(req); // throws if not logged in
-    await ensureTable();
-
+    const user = await requireAuth(req); // expects cookie with JWT
+    // users.id is INTEGER; i129f_entries.user_id is INTEGER
     const rows = await sql`
-      SELECT data FROM i129f_entries
+      SELECT data
+      FROM i129f_entries
       WHERE user_id = ${user.id}
       LIMIT 1;
     `;
-
-    const data = rows?.[0]?.data || {};
+    const data = rows.length ? rows[0].data : null;
     return NextResponse.json({ ok: true, data });
-  } catch (err) {
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 400 });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 401 });
   }
 }
