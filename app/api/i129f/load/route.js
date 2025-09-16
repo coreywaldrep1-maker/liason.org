@@ -1,25 +1,23 @@
 // app/api/i129f/load/route.js
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
+import sql from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
-
-const sql = neon(process.env.DATABASE_URL);
 
 export async function GET(req) {
   try {
-    const user = await requireAuth(req); // expects cookie with JWT
-    // users.id is INTEGER; i129f_entries.user_id is INTEGER
+    const user = await requireAuth(req);
     const rows = await sql`
-      SELECT data
-      FROM i129f_entries
+      SELECT data FROM i129f_entries
       WHERE user_id = ${user.id}
-      LIMIT 1;
+      LIMIT 1
     `;
-    const data = rows.length ? rows[0].data : null;
-    return NextResponse.json({ ok: true, data });
+    if (!rows.length) return NextResponse.json({ ok: true, data: null });
+    return NextResponse.json({ ok: true, data: rows[0].data || null });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 401 });
+    console.error('load error', e);
+    const msg = String(e.message || e);
+    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
   }
 }
