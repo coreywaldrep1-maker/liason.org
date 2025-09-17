@@ -1,5 +1,5 @@
 // app/api/i129f/pdf/route.js
-// Keep AcroForm fields (no flatten) by default; fill from saved DB data only.
+// Keep AcroForm fields (no flatten) by default; fill from the user's saved data.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -11,94 +11,117 @@ import { PDFDocument, StandardFonts } from "pdf-lib";
 import { sql } from "@/lib/db";
 import { applyI129fMapping } from "@/lib/i129f-mapping";
 
-// Adjust if your PDF lives elsewhere (e.g., "public/forms/i-129f.pdf")
 const TEMPLATE_RELATIVE = "public/i-129f.pdf";
 
-// --- helpers ---
+// ---------- helpers ----------
 async function loadTemplate() {
   const filePath = path.join(process.cwd(), TEMPLATE_RELATIVE);
   return readFile(filePath);
 }
 
-// base64url decode (no signature verification; just to read payload id)
+// best-effort JWT payload read (no verify) for user id if we need it
 function decodeJwtNoVerify(token) {
   try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
-    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = payload + "===".slice((payload.length + 3) % 4);
-    const json = Buffer.from(padded, "base64").toString("utf8");
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
-
-function getUserIdFromRequest(req) {
-  // 1) allow override via query (?userId=123)
-  try {
-    const url = new URL(req.url);
-    const qid = url.searchParams.get("userId");
-    if (qid && /^\d+$/.test(qid)) return Number(qid);
-  } catch {}
-
-  // 2) look for a JWT in cookies (common cookie names)
-  try {
-    const cookie = req.headers.get("cookie") || "";
-    const match =
-      cookie.match(/(?:^|;\s*)(?:token|jwt|auth|session)=([^;]+)/i) ||
-      cookie.match(/(?:^|;\s*)(?:Authorization)=Bearer\s+([^;]+)/i);
-    if (!match) return null;
-    const payload = decodeJwtNoVerify(decodeURIComponent(match[1]));
+    const [_, payload] = token.split(".");
     if (!payload) return null;
-    // Try typical shapes: { id }, { userId }, { user: { id } }
+    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "===".slice((b64.length + 3) % 4);
+    return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+  } catch { return null; }
+}
+function getUserIdFromCookie(cookieStr) {
+  try {
+    if (!cookieStr) return null;
+    const m = cookieStr.match(/(?:^|;\s*)(?:token|jwt|auth|session)=([^;]+)/i);
+    if (!m) return null;
+    const payload = decodeJwtNoVerify(decodeURIComponent(m[1]));
+    if (!payload) return null;
     return (
       (typeof payload.id === "number" && payload.id) ||
       (typeof payload.userId === "number" && payload.userId) ||
       (payload.user && typeof payload.user.id === "number" && payload.user.id) ||
       null
     );
+  } catch { return null; }
+}
+
+/**
+ * 1) Try to fetch your own saved JSON via /api/i129f/data (preferred).
+ *    This uses the same auth/session logic your app already uses.
+ * 2) If that fails, try the database directly by user id (latest row).
+ */
+async function loadSavedForRequest(request) {
+  const cookie = request.headers.get("cookie") || "";
+  const url = new URL(request.url);
+
+  // allow manual override: ?userId=123 for testing
+  const qUserId = url.searchParams.get("userId");
+  const userIdFromQuery = qUserId && /^\d+$/.test(qUserId) ? Number(qUserId) : null;
+
+  // FIRST: internal fetch to the app's own source of truth
+  try {
+    const origin = url.origin; // works locally and on Vercel
+    const res = await fetch(`${origin}/api/i129f/data`, {
+      headers: { cookie },
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const json = await res.json().catch(() => ({}));
+      // try a few common shapes
+      const candidate = json?.data ?? json?.saved ?? json?.i129f ?? json;
+      if (candidate && typeof candidate === "object") return candidate;
+    }
   } catch {
-    return null;
+    // ignore and fall through to DB path
   }
+
+  // SECOND: database (latest row for this user)
+  const userId = userIdFromQuery ?? getUserIdFromCookie(cookie);
+  if (userId) {
+    try {
+      const rows = await sql`
+        select data
+        from i129f
+        where user_id = ${userId}
+        order by updated_at desc
+        limit 1
+      `;
+      const data = rows?.[0]?.data;
+      if (data && typeof data === "object") return data;
+    } catch {
+      // ignore and return null below
+    }
+  }
+
+  return null;
 }
 
-async function loadSavedForUser(userId) {
-  if (!userId) return null;
-  // Adjust table/columns if your schema differs
-  const rows = await sql`
-    select data
-    from i129f
-    where user_id = ${userId}
-    order by updated_at desc
-    limit 1
-  `;
-  return rows?.[0]?.data ?? null;
-}
-
+// ---------- route ----------
 export async function GET(request) {
   try {
     const url = new URL(request.url);
-    const flatten = url.searchParams.get("flatten") === "1"; // default: NOT flattened
+    // Default: DO NOT FLATTEN (keep interactive AcroForm). Use ?flatten=1 to flatten explicitly.
+    const flatten = url.searchParams.get("flatten") === "1";
 
-    // identify the user (query param beats cookie)
-    const userId = getUserIdFromRequest(request);
-
-    // fetch saved JSON; no sample fallback anymore
-    const saved = await loadSavedForUser(userId);
+    // 1) Load saved JSON (via internal API or DB) — no debug/sample fallback
+    const saved = await loadSavedForRequest(request);
     if (!saved) {
       return NextResponse.json(
         {
           ok: false,
-          error: "No saved I-129F data for this user. Log in and save progress first (or pass ?userId=123 to test).",
+          error:
+            "No saved I-129F data found for the current session. Make sure you're logged in and have saved progress.",
+          hint:
+            "If testing, pass ?userId=YOUR_ID or open /api/i129f/data to confirm the saved JSON is returned.",
         },
         { status: 404 }
       );
     }
 
+    // 2) Load template
     const pdfBytes = await loadTemplate();
 
-    // open pdf, prep appearances, write fields, keep acroform
+    // 3) Open, embed Helvetica, generate appearances (so fields are visible without flattening)
     const pdfDoc = await PDFDocument.load(pdfBytes, {
       updateMetadata: true,
       ignoreEncryption: true,
@@ -107,11 +130,14 @@ export async function GET(request) {
     const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
     try { form.updateFieldAppearances(helv); } catch {}
 
+    // 4) Fill fields from your mapper
     applyI129fMapping(saved, form);
 
+    // 5) Recompute appearances; keep AcroForm unless explicitly flattened
     try { form.updateFieldAppearances(helv); } catch {}
-    if (flatten) form.flatten(); // only if explicitly requested
+    if (flatten) form.flatten();
 
+    // 6) Save + return
     const out = await pdfDoc.save();
     return new NextResponse(out, {
       status: 200,
