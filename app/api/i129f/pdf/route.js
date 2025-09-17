@@ -22,17 +22,22 @@ async function loadTemplate() {
 // best-effort JWT payload read (no verify) for user id if we need it
 function decodeJwtNoVerify(token) {
   try {
-    const [_, payload] = token.split(".");
-    if (!payload) return null;
-    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = b64 + "===".slice((b64.length + 3) % 4);
-    return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = payload + "===".slice((payload.length + 3) % 4);
+    const json = Buffer.from(padded, "base64").toString("utf8");
+    return JSON.parse(json);
   } catch { return null; }
 }
+
 function getUserIdFromCookie(cookieStr) {
   try {
     if (!cookieStr) return null;
-    const m = cookieStr.match(/(?:^|;\s*)(?:token|jwt|auth|session)=([^;]+)/i);
+    // common cookie names; tweak if yours is different
+    const m =
+      cookieStr.match(/(?:^|;\s*)(?:token|jwt|auth|session)=([^;]+)/i) ||
+      cookieStr.match(/(?:^|;\s*)Authorization=Bearer\s+([^;]+)/i);
     if (!m) return null;
     const payload = decodeJwtNoVerify(decodeURIComponent(m[1]));
     if (!payload) return null;
@@ -45,38 +50,53 @@ function getUserIdFromCookie(cookieStr) {
   } catch { return null; }
 }
 
+async function fetchJsonOrNull(url, cookie) {
+  try {
+    const res = await fetch(url, { headers: { cookie }, cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json().catch(() => null);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * 1) Try to fetch your own saved JSON via /api/i129f/data (preferred).
- *    This uses the same auth/session logic your app already uses.
- * 2) If that fails, try the database directly by user id (latest row).
+ * Try in order:
+ *   1) GET /api/i129f/data (uses your existing session/auth logic)
+ *   2) GET /api/auth/me → DB lookup by user.id
+ *   3) ?userId=123 override (DB)
  */
 async function loadSavedForRequest(request) {
   const cookie = request.headers.get("cookie") || "";
   const url = new URL(request.url);
+  const origin = url.origin;
 
-  // allow manual override: ?userId=123 for testing
+  // 0) explicit override for testing
   const qUserId = url.searchParams.get("userId");
-  const userIdFromQuery = qUserId && /^\d+$/.test(qUserId) ? Number(qUserId) : null;
+  const testUserId = qUserId && /^\d+$/.test(qUserId) ? Number(qUserId) : null;
 
-  // FIRST: internal fetch to the app's own source of truth
-  try {
-    const origin = url.origin; // works locally and on Vercel
-    const res = await fetch(`${origin}/api/i129f/data`, {
-      headers: { cookie },
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const json = await res.json().catch(() => ({}));
-      // try a few common shapes
-      const candidate = json?.data ?? json?.saved ?? json?.i129f ?? json;
-      if (candidate && typeof candidate === "object") return candidate;
-    }
-  } catch {
-    // ignore and fall through to DB path
+  // 1) App’s own API (preferred)
+  const dataJson = await fetchJsonOrNull(`${origin}/api/i129f/data`, cookie);
+  if (dataJson) {
+    // try common shapes
+    const candidate = dataJson.data ?? dataJson.saved ?? dataJson.i129f ?? dataJson;
+    if (candidate && typeof candidate === "object") return candidate;
   }
 
-  // SECOND: database (latest row for this user)
-  const userId = userIdFromQuery ?? getUserIdFromCookie(cookie);
+  // 2) /api/auth/me to get user.id from the session
+  let userId = testUserId;
+  if (!userId) {
+    const me = await fetchJsonOrNull(`${origin}/api/auth/me`, cookie);
+    const idFromMe =
+      me?.user?.id ?? me?.id ?? (typeof me?.userId === "number" ? me.userId : null);
+    if (typeof idFromMe === "number") userId = idFromMe;
+  }
+  if (!userId) {
+    // 3) last resort: decode JWT cookie for id
+    const idFromCookie = getUserIdFromCookie(cookie);
+    if (typeof idFromCookie === "number") userId = idFromCookie;
+  }
+
   if (userId) {
     try {
       const rows = await sql`
@@ -89,7 +109,7 @@ async function loadSavedForRequest(request) {
       const data = rows?.[0]?.data;
       if (data && typeof data === "object") return data;
     } catch {
-      // ignore and return null below
+      // ignore and fall through
     }
   }
 
@@ -103,7 +123,7 @@ export async function GET(request) {
     // Default: DO NOT FLATTEN (keep interactive AcroForm). Use ?flatten=1 to flatten explicitly.
     const flatten = url.searchParams.get("flatten") === "1";
 
-    // 1) Load saved JSON (via internal API or DB) — no debug/sample fallback
+    // 1) Load saved JSON (via /api/i129f/data, or /api/auth/me + DB, or ?userId)
     const saved = await loadSavedForRequest(request);
     if (!saved) {
       return NextResponse.json(
@@ -112,7 +132,7 @@ export async function GET(request) {
           error:
             "No saved I-129F data found for the current session. Make sure you're logged in and have saved progress.",
           hint:
-            "If testing, pass ?userId=YOUR_ID or open /api/i129f/data to confirm the saved JSON is returned.",
+            "Open /api/i129f/data in the same session to confirm JSON; or pass ?userId=YOUR_ID for testing.",
         },
         { status: 404 }
       );
