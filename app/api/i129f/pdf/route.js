@@ -1,5 +1,5 @@
 // app/api/i129f/pdf/route.js
-// Runtime: Node (needed for pdf-lib + crypto)
+// Keep AcroForm fields (no flatten) by default.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -11,12 +11,7 @@ import { PDFDocument, StandardFonts } from "pdf-lib";
 import { sql } from "@/lib/db";
 import { applyI129fMapping } from "@/lib/i129f-mapping";
 
-/**
- * Adjust this if your form lives elsewhere.
- * Common locations:
- *   /public/forms/i-129f.pdf
- *   /public/i-129f.pdf
- */
+// Adjust if your PDF lives elsewhere (e.g., "public/forms/i-129f.pdf")
 const TEMPLATE_RELATIVE = "public/i-129f.pdf";
 
 async function loadTemplate() {
@@ -25,75 +20,72 @@ async function loadTemplate() {
 }
 
 /**
- * Replace this with your real “load saved data” query if needed.
- * This version just tries to load the latest saved row for the current user id (from cookie).
- * If you already have logic for this, keep yours and only copy the PDF handling below.
+ * Load some saved data even if not logged in:
+ * 1) latest row from i129f.data
+ * 2) fallback to a tiny sample so you can see fields populate
+ * Adjust table/columns to match your schema if needed.
  */
-async function loadSavedJsonOrEmpty(userId) {
+async function loadAnySavedOrSample() {
   try {
-    if (!userId) return {};
-    // Adjust table/column names to match your schema:
-    // Example schema: i129f(user_id int, data jsonb, updated_at timestamptz)
-    const rows =
-      await sql`select data from i129f where user_id=${userId} order by updated_at desc limit 1`;
-    return rows?.[0]?.data || {};
+    const rows = await sql/*sql*/`
+      select data
+      from i129f
+      order by updated_at desc
+      limit 1
+    `;
+    if (rows?.[0]?.data) return rows[0].data;
   } catch {
-    return {};
+    // ignore DB errors and fall through to sample
   }
+  return {
+    petitioner: { firstName: "DEBUG_GIVEN", lastName: "DEBUG_FAMILY", middleName: "" },
+    mailing: { street: "123 Main St", city: "Austin", state: "TX", zip: "73301", country: "USA" },
+    physicalAddresses: [
+      { street: "123 Main St", city: "Austin", state: "TX", zip: "73301", country: "USA", from: "2020-01-01", to: "2023-12-31" }
+    ],
+    employment: [
+      { employer: "Example Co", street: "1 Work Rd", city: "Austin", state: "TX", zip: "73301", occupation: "Engineer", from: "2021-01-01", to: "2024-01-01" }
+    ],
+    beneficiary: {
+      firstName: "BEN_GIVEN",
+      lastName: "BEN_FAMILY",
+      dob: "1990-05-15",
+      mailing: { street: "456 Oak Ave", city: "Dallas", state: "TX", zip: "75001", country: "USA" },
+      physical: [{ street: "456 Oak Ave", city: "Dallas", state: "TX", zip: "75001", country: "USA", from: "2022-01-01", to: "2024-01-01" }],
+      employment: [{ employer: "Widgets LLC", street: "2 Job Ln", city: "Dallas", state: "TX", zip: "75001", occupation: "Analyst", from: "2022-06-01", to: "2024-01-01" }]
+    }
+  };
 }
 
 export async function GET(request) {
   try {
-    // ---- identify user (reuse your auth if you have it) ----
-    // If your auth stores "uid" in a cookie/JWT, extract it here.
-    // For now we’re permissive: userId may be null, and we’ll just generate a blank form.
-    let userId = null;
-    try {
-      const cookie = request.headers.get("cookie") || "";
-      // If you already have /api/auth/me working, consider calling that logic directly instead.
-      // Here we do nothing fancy; leave userId as null unless you wire it.
-      void cookie;
-    } catch {}
+    const url = new URL(request.url);
+    // Default: DO NOT FLATTEN (keep interactive AcroForm fields)
+    const flatten = url.searchParams.get("flatten") === "1";
 
-    // ---- load data + pdf template ----
-    const saved = await loadSavedJsonOrEmpty(userId);
+    const saved = await loadAnySavedOrSample();
     const pdfBytes = await loadTemplate();
 
-    // ---- open PDF + embed font + build field appearances ----
+    // Open the PDF, embed a font, and build appearances (so entries are visible without flattening)
     const pdfDoc = await PDFDocument.load(pdfBytes, {
       updateMetadata: true,
       ignoreEncryption: true,
     });
-
     const form = pdfDoc.getForm();
     const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-    // Build appearances before we start writing — avoids “Failed to extract appearance ref”
-    try {
-      form.updateFieldAppearances(helv);
-    } catch {
-      /* ignore */
-    }
+    // Build appearances before writing to avoid “appearance ref” errors
+    try { form.updateFieldAppearances(helv); } catch {}
 
-    // ---- apply your mapping (writes text into fields) ----
+    // Write values
     applyI129fMapping(saved, form);
 
-    // Optional: if you toggle any checkboxes/radios in your mapping,
-    // wrap them in a safe helper like this (copy into your mapping if needed):
-    // function safeCheck(form, name, on = true) {
-    //   try { const cb = form.getCheckBox(name); on ? cb.check() : cb.uncheck(); return true; }
-    //   catch { return false; }
-    // }
+    // Rebuild appearances after writing, still keeping AcroForm intact
+    try { form.updateFieldAppearances(helv); } catch {}
 
-    // Rebuild appearances again right before saving (some PDFs need this twice)
-    try {
-      form.updateFieldAppearances(helv);
-    } catch {
-      /* ignore */
-    }
+    if (flatten) form.flatten(); // only if explicitly requested
 
     const out = await pdfDoc.save();
-
     return new NextResponse(out, {
       status: 200,
       headers: {
@@ -103,7 +95,6 @@ export async function GET(request) {
       },
     });
   } catch (err) {
-    // Always return JSON on error so you can see exactly what failed
     return NextResponse.json(
       { ok: false, error: String(err && err.stack ? err.stack : err) },
       { status: 500 }
