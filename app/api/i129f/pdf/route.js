@@ -1,5 +1,5 @@
 // app/api/i129f/pdf/route.js
-// Keep AcroForm fields (no flatten) by default.
+// Keep AcroForm fields (no flatten) by default; fill from saved DB data only.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -14,75 +14,102 @@ import { applyI129fMapping } from "@/lib/i129f-mapping";
 // Adjust if your PDF lives elsewhere (e.g., "public/forms/i-129f.pdf")
 const TEMPLATE_RELATIVE = "public/i-129f.pdf";
 
+// --- helpers ---
 async function loadTemplate() {
   const filePath = path.join(process.cwd(), TEMPLATE_RELATIVE);
   return readFile(filePath);
 }
 
-/**
- * Load some saved data even if not logged in:
- * 1) latest row from i129f.data
- * 2) fallback to a tiny sample so you can see fields populate
- * Adjust table/columns to match your schema if needed.
- */
-async function loadAnySavedOrSample() {
+// base64url decode (no signature verification; just to read payload id)
+function decodeJwtNoVerify(token) {
   try {
-    const rows = await sql/*sql*/`
-      select data
-      from i129f
-      order by updated_at desc
-      limit 1
-    `;
-    if (rows?.[0]?.data) return rows[0].data;
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = payload + "===".slice((payload.length + 3) % 4);
+    const json = Buffer.from(padded, "base64").toString("utf8");
+    return JSON.parse(json);
   } catch {
-    // ignore DB errors and fall through to sample
+    return null;
   }
-  return {
-    petitioner: { firstName: "DEBUG_GIVEN", lastName: "DEBUG_FAMILY", middleName: "" },
-    mailing: { street: "123 Main St", city: "Austin", state: "TX", zip: "73301", country: "USA" },
-    physicalAddresses: [
-      { street: "123 Main St", city: "Austin", state: "TX", zip: "73301", country: "USA", from: "2020-01-01", to: "2023-12-31" }
-    ],
-    employment: [
-      { employer: "Example Co", street: "1 Work Rd", city: "Austin", state: "TX", zip: "73301", occupation: "Engineer", from: "2021-01-01", to: "2024-01-01" }
-    ],
-    beneficiary: {
-      firstName: "BEN_GIVEN",
-      lastName: "BEN_FAMILY",
-      dob: "1990-05-15",
-      mailing: { street: "456 Oak Ave", city: "Dallas", state: "TX", zip: "75001", country: "USA" },
-      physical: [{ street: "456 Oak Ave", city: "Dallas", state: "TX", zip: "75001", country: "USA", from: "2022-01-01", to: "2024-01-01" }],
-      employment: [{ employer: "Widgets LLC", street: "2 Job Ln", city: "Dallas", state: "TX", zip: "75001", occupation: "Analyst", from: "2022-06-01", to: "2024-01-01" }]
-    }
-  };
+}
+
+function getUserIdFromRequest(req) {
+  // 1) allow override via query (?userId=123)
+  try {
+    const url = new URL(req.url);
+    const qid = url.searchParams.get("userId");
+    if (qid && /^\d+$/.test(qid)) return Number(qid);
+  } catch {}
+
+  // 2) look for a JWT in cookies (common cookie names)
+  try {
+    const cookie = req.headers.get("cookie") || "";
+    const match =
+      cookie.match(/(?:^|;\s*)(?:token|jwt|auth|session)=([^;]+)/i) ||
+      cookie.match(/(?:^|;\s*)(?:Authorization)=Bearer\s+([^;]+)/i);
+    if (!match) return null;
+    const payload = decodeJwtNoVerify(decodeURIComponent(match[1]));
+    if (!payload) return null;
+    // Try typical shapes: { id }, { userId }, { user: { id } }
+    return (
+      (typeof payload.id === "number" && payload.id) ||
+      (typeof payload.userId === "number" && payload.userId) ||
+      (payload.user && typeof payload.user.id === "number" && payload.user.id) ||
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function loadSavedForUser(userId) {
+  if (!userId) return null;
+  // Adjust table/columns if your schema differs
+  const rows = await sql`
+    select data
+    from i129f
+    where user_id = ${userId}
+    order by updated_at desc
+    limit 1
+  `;
+  return rows?.[0]?.data ?? null;
 }
 
 export async function GET(request) {
   try {
     const url = new URL(request.url);
-    // Default: DO NOT FLATTEN (keep interactive AcroForm fields)
-    const flatten = url.searchParams.get("flatten") === "1";
+    const flatten = url.searchParams.get("flatten") === "1"; // default: NOT flattened
 
-    const saved = await loadAnySavedOrSample();
+    // identify the user (query param beats cookie)
+    const userId = getUserIdFromRequest(request);
+
+    // fetch saved JSON; no sample fallback anymore
+    const saved = await loadSavedForUser(userId);
+    if (!saved) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "No saved I-129F data for this user. Log in and save progress first (or pass ?userId=123 to test).",
+        },
+        { status: 404 }
+      );
+    }
+
     const pdfBytes = await loadTemplate();
 
-    // Open the PDF, embed a font, and build appearances (so entries are visible without flattening)
+    // open pdf, prep appearances, write fields, keep acroform
     const pdfDoc = await PDFDocument.load(pdfBytes, {
       updateMetadata: true,
       ignoreEncryption: true,
     });
     const form = pdfDoc.getForm();
     const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-    // Build appearances before writing to avoid “appearance ref” errors
     try { form.updateFieldAppearances(helv); } catch {}
 
-    // Write values
     applyI129fMapping(saved, form);
 
-    // Rebuild appearances after writing, still keeping AcroForm intact
     try { form.updateFieldAppearances(helv); } catch {}
-
     if (flatten) form.flatten(); // only if explicitly requested
 
     const out = await pdfDoc.save();
