@@ -1,5 +1,5 @@
 // app/api/i129f/pdf/route.js
-// Keeps AcroForm fields (no flatten) by default; aggressively finds saved data.
+// Keeps AcroForm fields (no flatten) by default; aggressively finds saved data using tagged templates.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -24,7 +24,6 @@ async function resolveTemplatePath() {
     const p = path.join(process.cwd(), rel);
     try { await access(p, FS.R_OK); return p; } catch {}
   }
-  // last resort: first entry (will throw later with clear error)
   return path.join(process.cwd(), CANDIDATE_PDFS[0]);
 }
 
@@ -61,35 +60,69 @@ function extractSaved(json) {
 }
 
 /**
- * Robust DB fallback:
- * - Tries several common table names
- * - Tries several common JSON column names
- * - Tries common ordering columns
- * Uses sql.unsafe() to build the query safely for dynamic identifiers.
+ * Robust DB fallback using ONLY tagged-template queries (no sql.unsafe):
+ * Tries several common table names + json column names + order columns.
  */
-async function fetchLatestRowFromAnyTable(debug) {
-  const tables = ["i129f", "i129f_saves", "i129f_data"];
-  const jsonCols = ["data", "payload", "json", "form_json"];
-  const orderCols = ["updated_at", "created_at", "id"];
+async function fetchLatestRowFromAnyTableTagged(debug) {
+  const attempts = [
+    // i129f with typical json col names
+    async () => { const r = await sql`select data as data from i129f order by updated_at desc limit 1`; return { r, q: "i129f.data via updated_at" }; },
+    async () => { const r = await sql`select data as data from i129f order by created_at desc limit 1`; return { r, q: "i129f.data via created_at" }; },
+    async () => { const r = await sql`select data as data from i129f order by id desc limit 1`; return { r, q: "i129f.data via id" }; },
 
-  for (const t of tables) {
-    for (const jcol of jsonCols) {
-      for (const ocol of orderCols) {
-        const q = `select ${jcol} as data from ${t} order by ${ocol} desc limit 1`;
-        try {
-          const rows = await sql.unsafe(q);
-          const data = rows?.[0]?.data;
-          if (data && typeof data === "object") {
-            debug.dbQuery = q;
-            debug.dbTable = t;
-            debug.dbJsonCol = jcol;
-            debug.dbOrderCol = ocol;
-            return data;
-          }
-        } catch (e) {
-          debug.dbErrors.push({ table: t, jsonCol: jcol, orderCol: ocol, err: String(e).slice(0, 200) });
-        }
+    async () => { const r = await sql`select payload as data from i129f order by updated_at desc limit 1`; return { r, q: "i129f.payload via updated_at" }; },
+    async () => { const r = await sql`select payload as data from i129f order by created_at desc limit 1`; return { r, q: "i129f.payload via created_at" }; },
+    async () => { const r = await sql`select payload as data from i129f order by id desc limit 1`; return { r, q: "i129f.payload via id" }; },
+
+    async () => { const r = await sql`select json as data from i129f order by updated_at desc limit 1`; return { r, q: "i129f.json via updated_at" }; },
+    async () => { const r = await sql`select json as data from i129f order by created_at desc limit 1`; return { r, q: "i129f.json via created_at" }; },
+    async () => { const r = await sql`select json as data from i129f order by id desc limit 1`; return { r, q: "i129f.json via id" }; },
+
+    async () => { const r = await sql`select form_json as data from i129f order by updated_at desc limit 1`; return { r, q: "i129f.form_json via updated_at" }; },
+    async () => { const r = await sql`select form_json as data from i129f order by created_at desc limit 1`; return { r, q: "i129f.form_json via created_at" }; },
+    async () => { const r = await sql`select form_json as data from i129f order by id desc limit 1`; return { r, q: "i129f.form_json via id" }; },
+
+    // i129f_saves
+    async () => { const r = await sql`select data as data from i129f_saves order by updated_at desc limit 1`; return { r, q: "i129f_saves.data via updated_at" }; },
+    async () => { const r = await sql`select data as data from i129f_saves order by created_at desc limit 1`; return { r, q: "i129f_saves.data via created_at" }; },
+    async () => { const r = await sql`select data as data from i129f_saves order by id desc limit 1`; return { r, q: "i129f_saves.data via id" }; },
+
+    async () => { const r = await sql`select payload as data from i129f_saves order by updated_at desc limit 1`; return { r, q: "i129f_saves.payload via updated_at" }; },
+    async () => { const r = await sql`select payload as data from i129f_saves order by created_at desc limit 1`; return { r, q: "i129f_saves.payload via created_at" }; },
+    async () => { const r = await sql`select payload as data from i129f_saves order by id desc limit 1`; return { r, q: "i129f_saves.payload via id" }; },
+
+    async () => { const r = await sql`select json as data from i129f_saves order by updated_at desc limit 1`; return { r, q: "i129f_saves.json via updated_at" }; },
+    async () => { const r = await sql`select json as data from i129f_saves order by created_at desc limit 1`; return { r, q: "i129f_saves.json via created_at" }; },
+    async () => { const r = await sql`select json as data from i129f_saves order by id desc limit 1`; return { r, q: "i129f_saves.json via id" }; },
+
+    // i129f_data
+    async () => { const r = await sql`select data as data from i129f_data order by updated_at desc limit 1`; return { r, q: "i129f_data.data via updated_at" }; },
+    async () => { const r = await sql`select data as data from i129f_data order by created_at desc limit 1`; return { r, q: "i129f_data.data via created_at" }; },
+    async () => { const r = await sql`select data as data from i129f_data order by id desc limit 1`; return { r, q: "i129f_data.data via id" }; },
+
+    async () => { const r = await sql`select payload as data from i129f_data order by updated_at desc limit 1`; return { r, q: "i129f_data.payload via updated_at" }; },
+    async () => { const r = await sql`select payload as data from i129f_data order by created_at desc limit 1`; return { r, q: "i129f_data.payload via created_at" }; },
+    async () => { const r = await sql`select payload as data from i129f_data order by id desc limit 1`; return { r, q: "i129f_data.payload via id" }; },
+
+    async () => { const r = await sql`select json as data from i129f_data order by updated_at desc limit 1`; return { r, q: "i129f_data.json via updated_at" }; },
+    async () => { const r = await sql`select json as data from i129f_data order by created_at desc limit 1`; return { r, q: "i129f_data.json via created_at" }; },
+    async () => { const r = await sql`select json as data from i129f_data order by id desc limit 1`; return { r, q: "i129f_data.json via id" }; },
+
+    async () => { const r = await sql`select form_json as data from i129f_data order by updated_at desc limit 1`; return { r, q: "i129f_data.form_json via updated_at" }; },
+    async () => { const r = await sql`select form_json as data from i129f_data order by created_at desc limit 1`; return { r, q: "i129f_data.form_json via created_at" }; },
+    async () => { const r = await sql`select form_json as data from i129f_data order by id desc limit 1`; return { r, q: "i129f_data.form_json via id" }; },
+  ];
+
+  for (const fn of attempts) {
+    try {
+      const { r, q } = await fn();
+      const data = r?.[0]?.data;
+      if (data && typeof data === "object") {
+        debug.dbQuery = q;
+        return data;
       }
+    } catch (e) {
+      debug.dbErrors.push(String(e).slice(0, 200));
     }
   }
   return null;
@@ -102,7 +135,7 @@ async function loadSavedForRequest(request, debug) {
 
   // 1) App’s own API (preferred)
   const dataJson = await fetchJsonOrNull(`${origin}/api/i129f/data`, cookie);
-  debug.tried.data = Boolean(dataJson);
+  debug.tried = { data: Boolean(dataJson) };
   const fromData = extractSaved(dataJson);
   if (fromData) {
     debug.source = "api/i129f/data";
@@ -111,7 +144,7 @@ async function loadSavedForRequest(request, debug) {
   }
 
   // 2) DB: newest row from known tables (no userId required)
-  const fromDb = await fetchLatestRowFromAnyTable(debug);
+  const fromDb = await fetchLatestRowFromAnyTableTagged(debug);
   if (fromDb) {
     debug.source = "db:any-latest";
     debug.keys = Object.keys(fromDb);
@@ -122,7 +155,7 @@ async function loadSavedForRequest(request, debug) {
 }
 
 export async function GET(request) {
-  const debug = { tried: { data: false }, dbErrors: [], source: null, keys: [] };
+  const debug = { tried: { data: false }, dbErrors: [], source: null, keys: [], dbQuery: null };
 
   try {
     const url = new URL(request.url);
@@ -132,7 +165,10 @@ export async function GET(request) {
     // 1) Load saved JSON (API first, then DB latest)
     const saved = await loadSavedForRequest(request, debug);
     if (wantDebug) {
-      return NextResponse.json({ ok: Boolean(saved), debug, sample: saved ? Object.keys(saved) : null }, { status: saved ? 200 : 404 });
+      return NextResponse.json(
+        { ok: Boolean(saved), debug, sample: saved ? Object.keys(saved) : null },
+        { status: saved ? 200 : 404 }
+      );
     }
     if (!saved) {
       return NextResponse.json(
