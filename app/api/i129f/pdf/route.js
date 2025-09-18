@@ -11,7 +11,7 @@ import { PDFDocument, StandardFonts } from "pdf-lib";
 
 import { applyI129fMapping } from "@/lib/i129f-mapping";
 
-// Common places a template might live
+// Likely template locations
 const CANDIDATE_PDFS = [
   "public/i-129f.pdf",
   "public/forms/i-129f.pdf",
@@ -23,7 +23,7 @@ async function resolveTemplatePath() {
     const p = path.join(process.cwd(), rel);
     try { await access(p, FS.R_OK); return p; } catch {}
   }
-  // fallback to first (will error later if really missing)
+  // fallback to the first (will throw later if missing)
   return path.join(process.cwd(), CANDIDATE_PDFS[0]);
 }
 
@@ -46,11 +46,11 @@ async function fetchJsonOrNull(url, cookie) {
   }
 }
 
-// Accept lots of shapes your endpoints might return
+// Accept many shapes your endpoints might return
 function extractSaved(json) {
   if (!json || typeof json !== "object") return null;
 
-  // Most common
+  // Common wrappers
   if (json.data && typeof json.data === "object") return json.data;
   if (json.saved && typeof json.saved === "object") return json.saved;
   if (json.i129f && typeof json.i129f === "object") return json.i129f;
@@ -75,19 +75,19 @@ async function loadSavedFromAppEndpoints(request, dbg) {
   const cookie = request.headers.get("cookie") || "";
   const origin = new URL(request.url).origin;
 
-  // Try /api/i129f/data
+  // 1) /api/i129f/data
   const j1 = await fetchJsonOrNull(`${origin}/api/i129f/data`, cookie);
-  dbg.tried.data = Boolean(j1);
+  dbg.tried = { ...(dbg.tried || {}), data: Boolean(j1) };
   const s1 = extractSaved(j1);
   if (s1) return { source: "/api/i129f/data", saved: s1 };
 
-  // Try /api/i129f/load
+  // 2) /api/i129f/load
   const j2 = await fetchJsonOrNull(`${origin}/api/i129f/load`, cookie);
   dbg.tried.load = Boolean(j2);
   const s2 = extractSaved(j2);
   if (s2) return { source: "/api/i129f/load", saved: s2 };
 
-  // Try /api/i129f (some apps return the current saved object here)
+  // 3) /api/i129f (some apps expose current saved object here)
   const j3 = await fetchJsonOrNull(`${origin}/api/i129f`, cookie);
   dbg.tried.root = Boolean(j3);
   const s3 = extractSaved(j3);
@@ -97,3 +97,72 @@ async function loadSavedFromAppEndpoints(request, dbg) {
 }
 
 export async function GET(request) {
+  const debug = { tried: { data: false, load: false, root: false }, source: null, keys: [] };
+
+  try {
+    const url = new URL(request.url);
+    const flatten = url.searchParams.get("flatten") === "1";
+    const wantDebug = url.searchParams.get("debug") === "1";
+
+    // 1) Load saved JSON from your own API (session cookies included)
+    const { source, saved } = await loadSavedFromAppEndpoints(request, debug);
+    debug.source = source || null;
+    debug.keys = saved ? Object.keys(saved) : [];
+
+    if (wantDebug) {
+      return NextResponse.json(
+        { ok: Boolean(saved), debug, sample: saved ? Object.keys(saved) : null },
+        { status: saved ? 200 : 404 }
+      );
+    }
+
+    if (!saved) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "No saved I-129F data found for this session. Make sure you are logged in to the same browser and have saved progress.",
+          hint:
+            "Open /api/i129f/data (or /api/i129f/load) in the SAME session; or call /api/i129f/pdf?debug=1 to see what the server can access.",
+          debug,
+        },
+        { status: 404 }
+      );
+    }
+
+    // 2) Load template
+    const pdfBytes = await loadTemplate();
+
+    // 3) Open PDF, embed Helvetica, and prebuild appearances so fields show without flattening
+    const pdfDoc = await PDFDocument.load(pdfBytes, {
+      updateMetadata: true,
+      ignoreEncryption: true,
+    });
+    const form = pdfDoc.getForm();
+    const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    try { form.updateFieldAppearances(helv); } catch {}
+
+    // 4) Fill fields
+    applyI129fMapping(saved, form);
+
+    // 5) Rebuild appearances; keep AcroForm unless explicitly flattened
+    try { form.updateFieldAppearances(helv); } catch {}
+    if (flatten) form.flatten();
+
+    // 6) Save & return
+    const out = await pdfDoc.save();
+    return new NextResponse(out, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": 'attachment; filename="i-129f.pdf"',
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: String(err && err.stack ? err.stack : err), debug },
+      { status: 500 }
+    );
+  }
+}
