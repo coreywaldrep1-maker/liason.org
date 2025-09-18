@@ -60,20 +60,36 @@ function extractSaved(json) {
   return null;
 }
 
-// Try common table names, newest first
+/**
+ * Robust DB fallback:
+ * - Tries several common table names
+ * - Tries several common JSON column names
+ * - Tries common ordering columns
+ * Uses sql.unsafe() to build the query safely for dynamic identifiers.
+ */
 async function fetchLatestRowFromAnyTable(debug) {
   const tables = ["i129f", "i129f_saves", "i129f_data"];
+  const jsonCols = ["data", "payload", "json", "form_json"];
+  const orderCols = ["updated_at", "created_at", "id"];
+
   for (const t of tables) {
-    try {
-      const rows = await sql(`select data from ${t} order by updated_at desc limit 1`);
-      const data = rows?.[0]?.data;
-      if (data && typeof data === "object") {
-        debug.dbTable = t;
-        return data;
+    for (const jcol of jsonCols) {
+      for (const ocol of orderCols) {
+        const q = `select ${jcol} as data from ${t} order by ${ocol} desc limit 1`;
+        try {
+          const rows = await sql.unsafe(q);
+          const data = rows?.[0]?.data;
+          if (data && typeof data === "object") {
+            debug.dbQuery = q;
+            debug.dbTable = t;
+            debug.dbJsonCol = jcol;
+            debug.dbOrderCol = ocol;
+            return data;
+          }
+        } catch (e) {
+          debug.dbErrors.push({ table: t, jsonCol: jcol, orderCol: ocol, err: String(e).slice(0, 200) });
+        }
       }
-    } catch (e) {
-      // ignore wrong table errors
-      debug.dbErrors.push({ table: t, err: String(e).slice(0, 200) });
     }
   }
   return null;
