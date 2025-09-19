@@ -28,11 +28,30 @@ export default function RootLayout({ children }) {
                 </nav>
               </details>
 
-              <nav className="lang-switch" aria-label="Language">
-                {/* Simple links to your existing /api/i18n/set endpoint */}
-                <a href="/api/i18n/set?lang=en">EN</a>
-                <a href="/api/i18n/set?lang=es">ES</a>
-              </nav>
+              {/* Language dropdown (auto-submits to your i18n endpoint) */}
+              <form action="/api/i18n/set" method="GET" className="lang-select-form">
+                <select
+                  name="lang"
+                  className="select"
+                  aria-label="Language"
+                  onChange={(e) => e.currentTarget.form?.submit()}
+                  defaultValue="en"
+                >
+                  <option value="en">English</option>
+                  <option value="es">Español</option>
+                  <option value="fr">Français</option>
+                  <option value="de">Deutsch</option>
+                  <option value="pt">Português</option>
+                  <option value="it">Italiano</option>
+                  <option value="zh">中文</option>
+                  <option value="ja">日本語</option>
+                  <option value="ko">한국어</option>
+                  <option value="ar">العربية</option>
+                  <option value="hi">हिन्दी</option>
+                  <option value="vi">Tiếng Việt</option>
+                  <option value="ru">Русский</option>
+                </select>
+              </form>
             </div>
 
             {/* CENTER: Brand */}
@@ -43,7 +62,6 @@ export default function RootLayout({ children }) {
             {/* RIGHT: Auth */}
             <div className="header-right">
               <a className="button secondary" href="/login">Login</a>
-              {/* logout often requires POST — this form keeps it simple */}
               <form method="post" action="/api/auth/logout">
                 <button type="submit" className="button">Logout</button>
               </form>
