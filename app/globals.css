@@ -1,15 +1,32 @@
-/* Keep once (avoid duplicates) */
-input[type="text"],
-input[type="email"],
-input[type="tel"],
-input[type="password"],
-textarea {
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  padding: 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font: inherit;
+/* ---- Mobile-friendly field widths (light touch) ---- */
+@media (max-width: 640px) {
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  .field-inline {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  .field-inline > * {
+    min-width: 0; /* prevent overflow */
+  }
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="date"],
+  select,
+  textarea {
+    width: 100%;
+    max-width: 100%;
+  }
 }
-label.small > div { min-width: 0; }
+
+/* Desktop/tablet: let content size naturally, but avoid micro-widths */
+@media (min-width: 641px) {
+  .field-inline > * {
+    min-width: 12rem; /* keep sensible width without 100% stretching */
+  }
+}
