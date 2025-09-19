@@ -1,22 +1,33 @@
-// app/layout.jsx (server component)
-import './globals.css';
-import SiteHeader from '@/components/SiteHeader';
-import AutoTranslate from '@/components/AutoTranslate';
-import { getServerLang } from '@/lib/i18n-server';
+// app/layout.jsx
+import "./globals.css";
 
 export const metadata = {
-  title: 'Liason',
-  description: 'Streamlining the visa process to connect you to the world.',
+  title: "liason.org",
+  description: "Visa helper",
 };
 
 export default function RootLayout({ children }) {
-  const lang = getServerLang(); // reads the cookie server-side
   return (
-    <html lang={lang}>
+    <html lang="en">
       <body>
-        <SiteHeader />
-        <AutoTranslate />
-        {children}
+        {/* Top bar (optional). Remove if you already have one */}
+        <header className="site-header">
+          <div className="shell">
+            <a href="/" className="brand">liason.org</a>
+          </div>
+        </header>
+
+        {/* The main centered shell that caps width */}
+        <main className="shell">
+          {children}
+        </main>
+
+        {/* Footer (optional) */}
+        <footer className="site-footer">
+          <div className="shell">
+            <small>© {new Date().getFullYear()} liason.org</small>
+          </div>
+        </footer>
       </body>
     </html>
   );
