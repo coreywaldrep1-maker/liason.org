@@ -1,32 +1,115 @@
-/* ---- Mobile-friendly field widths (light touch) ---- */
+/* ===== Site shell: centered, readable max width ===== */
+:root {
+  --shell-max: 960px;        /* tweak: 840, 960, 1120 etc. */
+  --shell-pad: 1.25rem;      /* horizontal page padding */
+  --card-pad: 1rem;
+  --gap: 1rem;
+  --radius: 12px;
+  --bg: #0b0c10;             /* dark background you had before; adjust if needed */
+  --panel: #11131a;
+  --border: #222633;
+  --text: #e8ecf1;
+  --muted: #9aa3af;
+  --brand: #4f9cf9;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.shell {
+  max-width: var(--shell-max);
+  margin-inline: auto;
+  padding-inline: var(--shell-pad);
+  width: 100%;
+}
+
+.site-header,
+.site-footer {
+  border-bottom: 1px solid var(--border);
+}
+.site-footer { border-bottom: 0; border-top: 1px solid var(--border); }
+.site-header .brand {
+  display: inline-block;
+  padding: 0.875rem 0;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: .2px;
+}
+
+/* ===== Panels / cards ===== */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--card-pad);
+}
+
+/* ===== Forms: tidy, non-100% on desktop; friendly on mobile ===== */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--gap);
+}
+@media (min-width: 768px) {
+  .form-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .form-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+}
+
+label {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.input, input[type="text"], input[type="email"], input[type="tel"],
+input[type="date"], input[type="number"], select, textarea {
+  background: #0e1117;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  outline: none;
+  transition: border-color .15s ease;
+  /* Key bit: reasonable width by default on desktop, full-width on mobile */
+  width: 100%;
+  min-width: 12rem;            /* avoids “one-character” sizing */
+}
+
+.input:focus, input:focus, select:focus, textarea:focus {
+  border-color: #334155;
+}
+
+/* Inline rows */
+.field-inline {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+}
 @media (max-width: 640px) {
-  .field-row {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
-  }
   .field-inline {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-  }
-  .field-inline > * {
-    min-width: 0; /* prevent overflow */
-  }
-  input[type="text"],
-  input[type="email"],
-  input[type="tel"],
-  input[type="date"],
-  select,
-  textarea {
-    width: 100%;
-    max-width: 100%;
+    grid-template-columns: 1fr;
   }
 }
 
-/* Desktop/tablet: let content size naturally, but avoid micro-widths */
-@media (min-width: 641px) {
-  .field-inline > * {
-    min-width: 12rem; /* keep sensible width without 100% stretching */
-  }
+/* Subtle section spacing */
+.section + .section {
+  margin-top: 1rem;
 }
+
+/* Buttons */
+.button, button, [type="submit"] {
+  background: var(--brand);
+  border: 0;
+  color: white;
+  padding: 0.65rem 0.9rem;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.button:disabled, button:disabled { opacity: .6; cursor: not-allowed; }
