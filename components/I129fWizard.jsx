@@ -2,26 +2,29 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { I129F_SECTIONS as MAP_SECTIONS } from '@/lib/i129f-mapping';
 
 /* ----------------------------------------
-   Sections
+   Sections (prefer labels from mapping)
 ---------------------------------------- */
-const SECTIONS = [
-  { key: 'p1_ident', label: 'Part 1 — Petitioner (Identity)' },
-  { key: 'p1_addr',  label: 'Part 1 — Addresses' },
-  { key: 'p1_emp',   label: 'Part 1 — Employment' },
-  { key: 'p1_par',   label: 'Part 1 — Parents & Naturalization' },
+const SECTIONS = (MAP_SECTIONS && MAP_SECTIONS.length)
+  ? MAP_SECTIONS
+  : [
+      { key: 'p1_ident', label: 'Part 1 — Petitioner (Identity)' },
+      { key: 'p1_addr',  label: 'Part 1 — Addresses' },
+      { key: 'p1_emp',   label: 'Part 1 — Employment' },
+      { key: 'p1_par',   label: 'Part 1 — Parents & Naturalization' },
 
-  { key: 'p2_ident', label: 'Part 2 — Beneficiary (Identity)' },
-  { key: 'p2_addr',  label: 'Part 2 — Addresses' },
-  { key: 'p2_emp',   label: 'Part 2 — Employment' },
-  { key: 'p2_par',   label: 'Part 2 — Parents' },
+      { key: 'p2_ident', label: 'Part 2 — Beneficiary (Identity)' },
+      { key: 'p2_addr',  label: 'Part 2 — Addresses' },
+      { key: 'p2_emp',   label: 'Part 2 — Employment' },
+      { key: 'p2_par',   label: 'Part 2 — Parents' },
 
-  { key: 'p5_7',     label: 'Parts 5–7 — Contact / Interpreter / Preparer' },
-  { key: 'p8',       label: 'Part 8 — Additional Info' },
+      { key: 'p5_7',     label: 'Parts 5–7 — Contact / Interpreter / Preparer' },
+      { key: 'p8',       label: 'Part 8 — Additional Info' },
 
-  { key: 'review',   label: 'Review & Download' },
-];
+      { key: 'review',   label: 'Review & Download' },
+    ];
 
 /* ----------------------------------------
    Empty Shape (safe defaults)
@@ -354,7 +357,7 @@ export default function I129fWizard() {
   );
 
   return (
-    <div className="card" style={{display:'grid', gap:12}}>
+    <div className="card i129f-compact" style={{display:'grid', gap:12}}>
       {Tabs}
 
       {step===0 && <Part1Identity form={form} update={update} add={add} remove={remove} />}
@@ -404,6 +407,39 @@ export default function I129fWizard() {
           {busy ? 'Saving…' : 'Save progress'}
         </button>
       </div>
+
+      {/* Scoped, wizard-only compact widths */}
+      <style jsx>{`
+        .i129f-compact :global(input[type="text"]),
+        .i129f-compact :global(input[type="email"]),
+        .i129f-compact :global(input[type="tel"]),
+        .i129f-compact :global(input[type="date"]),
+        .i129f-compact :global(select) {
+          width: 100%;
+          max-width: 520px;
+        }
+        .i129f-compact :global(textarea) {
+          width: 100%;
+          max-width: 680px;
+        }
+        .i129f-compact :global(.row-2) {
+          display: grid;
+          gap: .75rem;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          max-width: 680px;
+        }
+        @media (max-width: 640px) {
+          .i129f-compact :global(input),
+          .i129f-compact :global(select),
+          .i129f-compact :global(textarea),
+          .i129f-compact :global(.row-2) {
+            max-width: 100%;
+          }
+          .i129f-compact :global(.row-2) {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
     </div>
   );
 }
