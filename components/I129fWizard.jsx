@@ -2,29 +2,26 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { I129F_SECTIONS as MAP_SECTIONS } from '@/lib/i129f-mapping';
 
 /* ----------------------------------------
-   Sections (prefer labels from mapping)
+   Sections
 ---------------------------------------- */
-const SECTIONS = (MAP_SECTIONS && MAP_SECTIONS.length)
-  ? MAP_SECTIONS
-  : [
-      { key: 'p1_ident', label: 'Part 1 — Petitioner (Identity)' },
-      { key: 'p1_addr',  label: 'Part 1 — Addresses' },
-      { key: 'p1_emp',   label: 'Part 1 — Employment' },
-      { key: 'p1_par',   label: 'Part 1 — Parents & Naturalization' },
+const SECTIONS = [
+  { key: 'p1_ident', label: 'Part 1 — Petitioner (Identity)' },
+  { key: 'p1_addr',  label: 'Part 1 — Addresses' },
+  { key: 'p1_emp',   label: 'Part 1 — Employment' },
+  { key: 'p1_par',   label: 'Part 1 — Parents & Naturalization' },
 
-      { key: 'p2_ident', label: 'Part 2 — Beneficiary (Identity)' },
-      { key: 'p2_addr',  label: 'Part 2 — Addresses' },
-      { key: 'p2_emp',   label: 'Part 2 — Employment' },
-      { key: 'p2_par',   label: 'Part 2 — Parents' },
+  { key: 'p2_ident', label: 'Part 2 — Beneficiary (Identity)' },
+  { key: 'p2_addr',  label: 'Part 2 — Addresses' },
+  { key: 'p2_emp',   label: 'Part 2 — Employment' },
+  { key: 'p2_par',   label: 'Part 2 — Parents' },
 
-      { key: 'p5_7',     label: 'Parts 5–7 — Contact / Interpreter / Preparer' },
-      { key: 'p8',       label: 'Part 8 — Additional Info' },
+  { key: 'p5_7',     label: 'Parts 5–7 — Contact / Interpreter / Preparer' },
+  { key: 'p8',       label: 'Part 8 — Additional Info' },
 
-      { key: 'review',   label: 'Review & Download' },
-    ];
+  { key: 'review',   label: 'Review & Download' },
+];
 
 /* ----------------------------------------
    Empty Shape (safe defaults)
@@ -39,7 +36,7 @@ const EMPTY = {
       { lastName:'', firstName:'', middleName:'', dob:'', cityBirth:'', countryBirth:'', nationality:'' },
       { lastName:'', firstName:'', middleName:'', dob:'', cityBirth:'', countryBirth:'', nationality:'' },
     ],
-    natzNumber:'', natzPlace:'', natzDate:'',
+    natzNumber:'', natzPlace:'', natzDate:'', 
   },
 
   mailing: {
@@ -118,8 +115,7 @@ function setPath(obj, path, value) {
 }
 
 /* ----------------------------------------
-   Date helpers: keep MM/DD/YYYY in state,
-   show <input type="date"> (YYYY-MM-DD) in UI
+   Date helpers
 ---------------------------------------- */
 function isoToUs(iso) {
   if (!iso) return '';
@@ -139,11 +135,8 @@ function usToIso(us) {
 }
 function normalizeUs(s) {
   if (!s) return '';
-  // try ISO first
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return isoToUs(s);
-  // if it's already US-ish, return as is
   if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) return s;
-  // attempt Date parsing
   const d = new Date(s);
   if (!isNaN(d.getTime())) {
     const mm = String(d.getMonth()+1).padStart(2,'0');
@@ -197,11 +190,8 @@ export default function I129fWizard() {
         if (!r.ok) return;
         const j = await r.json();
         if (j?.ok && j.data) {
-          // shallow merge over EMPTY so required arrays exist
           const merged = structuredClone(EMPTY);
-          // copy incoming keys over defaults
           Object.assign(merged, j.data);
-          // deep-ish merge specific subtrees that often are missing
           merged.petitioner = { ...EMPTY.petitioner, ...(j.data.petitioner||{}) };
           merged.mailing = { ...EMPTY.mailing, ...(j.data.mailing||{}) };
           merged.beneficiary = { ...EMPTY.beneficiary, ...(j.data.beneficiary||{}) };
@@ -245,7 +235,7 @@ export default function I129fWizard() {
     });
   }
 
-  // spill extras (>2 entries) into Part 8 automatically on save
+  // spill extras into Part 8 on save
   function spillExtrasIntoPart8(n) {
     const extras = [];
 
@@ -279,7 +269,6 @@ export default function I129fWizard() {
     try {
       const normalized = structuredClone(form);
 
-      // normalize date strings to MM/DD/YYYY consistently
       const datePaths = [
         'petitioner.natzDate',
         'beneficiary.dob',
@@ -310,7 +299,6 @@ export default function I129fWizard() {
         if (e?.to)   setPath(normalized, `beneficiary.employment.${i}.to`, normalizeUs(e.to));
       });
 
-      // spill extras (>2) into Part 8 automatically
       spillExtrasIntoPart8(normalized);
 
       const resp = await fetch('/api/i129f/save', {
@@ -333,6 +321,7 @@ export default function I129fWizard() {
   function next() { setStep(s => Math.min(s+1, SECTIONS.length-1)); }
   function back() { setStep(s => Math.max(s-1, 0)); }
 
+  // ✅ LABEL-ONLY TABS (no numeric prefixes)
   const Tabs = (
     <div style={{display:'flex', flexWrap:'wrap', gap:8, marginBottom:12}}>
       {SECTIONS.map((s, i) => (
@@ -349,15 +338,16 @@ export default function I129fWizard() {
             cursor:'pointer'
           }}
           title={s.label}
+          data-i18n-preserve="1"
         >
-          {i+1}. {s.label}
+          <span className="tab-label">{s.label}</span>
         </button>
       ))}
     </div>
   );
 
   return (
-    <div className="card i129f-compact" style={{display:'grid', gap:12}}>
+    <div className="card" style={{display:'grid', gap:12}}>
       {Tabs}
 
       {step===0 && <Part1Identity form={form} update={update} add={add} remove={remove} />}
@@ -407,39 +397,6 @@ export default function I129fWizard() {
           {busy ? 'Saving…' : 'Save progress'}
         </button>
       </div>
-
-      {/* Scoped, wizard-only compact widths */}
-      <style jsx>{`
-        .i129f-compact :global(input[type="text"]),
-        .i129f-compact :global(input[type="email"]),
-        .i129f-compact :global(input[type="tel"]),
-        .i129f-compact :global(input[type="date"]),
-        .i129f-compact :global(select) {
-          width: 100%;
-          max-width: 520px;
-        }
-        .i129f-compact :global(textarea) {
-          width: 100%;
-          max-width: 680px;
-        }
-        .i129f-compact :global(.row-2) {
-          display: grid;
-          gap: .75rem;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          max-width: 680px;
-        }
-        @media (max-width: 640px) {
-          .i129f-compact :global(input),
-          .i129f-compact :global(select),
-          .i129f-compact :global(textarea),
-          .i129f-compact :global(.row-2) {
-            max-width: 100%;
-          }
-          .i129f-compact :global(.row-2) {
-            grid-template-columns: 1fr;
-          }
-        }
-      `}</style>
     </div>
   );
 }
@@ -1121,7 +1078,7 @@ function Parts5to7({ form, update }) {
   );
 }
 
-function Part8Additional({ form, update, add, remove }) {
+function Part8Additional({ form, update }) {
   const otherPairs = useMemo(() => {
     const o = form.other || {};
     return Object.keys(o).map(k => ({ name:k, value:o[k] }));
