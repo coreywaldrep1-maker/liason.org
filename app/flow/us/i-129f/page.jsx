@@ -1,61 +1,70 @@
 // app/flow/us/i-129f/page.jsx
-import { t } from '@/lib/i18n-ssr';
 import Link from 'next/link';
 
-export const dynamic = 'force-dynamic';
-
-function I129FTabs() {
+// If you already created this tabs component, keep it. Otherwise this inline one works.
+function TabsBar({ current }) {
   const tabs = [
-    { href: '/flow/us/i-129f', label: 'Overview' },
-    { href: '/flow/us/i-129f/all-fields', label: 'All fields' },
-    { href: '/checkout/us/i-129f', label: 'Checkout' },
+    { slug: '', label: 'Overview', href: '/flow/us/i-129f' },
+    { slug: 'all-fields', label: 'ALL fields', href: '/flow/us/i-129f/all-fields' },
+    { slug: 'checkout', label: 'Checkout', href: '/checkout/us/i-129f' },
   ];
   return (
-    <div className="mb-6 flex items-center gap-1 overflow-x-auto">
-      {tabs.map(tab => (
-        <Link key={tab.href} href={tab.href}
-          className="px-3 py-2 text-sm font-medium border-b-2 border-transparent hover:border-black/40 hover:text-black">
-          {tab.label}
-        </Link>
-      ))}
-    </div>
+    <nav className="tabs" aria-label="I-129F sections">
+      {tabs.map(t => {
+        const isActive =
+          (current === 'overview' && t.slug === '') ||
+          (current && t.slug && current === t.slug);
+        return (
+          <Link key={t.href} className={`tab${isActive ? ' active' : ''}`} href={t.href}>
+            {t.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 
-export default async function I129FPage() {
-  const [title, subtitle] = await Promise.all([
-    t('Fiancé(e) Visa (Form I-129F)'),
-    t('Fill out the form below. You can save progress anytime.'),
-  ]);
+export const metadata = {
+  title: 'I-129F — Overview',
+};
 
+export default function I129FOverviewPage() {
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className="text-2xl font-semibold">{title}</h1>
-      <p className="text-gray-600 mt-1 mb-6">{subtitle}</p>
+    <main className="container" style={{padding: '1rem 0 2rem'}}>
+      {/* Tabs on top */}
+      <TabsBar current="overview" />
 
-      <I129FTabs />
+      {/* Heading */}
+      <h1 style={{margin: '1rem 0 .25rem'}}>Petition for Alien Fiancé(e) (I-129F)</h1>
+      <p className="muted" style={{marginBottom: '1rem'}}>
+        Complete the sections below. You can switch to “ALL fields” if you prefer a single long form.
+      </p>
 
-      <div className="card p-6">
-        <form className="form-wrap">
-          {/* Example fields with controlled width on desktop */}
-          <div className="field-span-6">
-            <label className="block text-sm font-medium mb-1">{await t('First name')}</label>
-            <input type="text" className="input" name="petitioner.firstName" />
+      {/* FORM WRAPPER — prevents 100% width look on desktop */}
+      <div className="form-width" style={{paddingBottom: '2rem'}}>
+        {/* Replace the placeholder below with your real form component */}
+        {/* Example: <I129FForm /> if you have it */}
+        <section className="card" style={{padding: '1rem'}}>
+          <h2 style={{marginBottom: '.5rem'}}>Part 1 — Petitioner</h2>
+
+          {/* Example inputs (delete once you render your real fields) */}
+          <div style={{display:'grid', gap: '1rem'}}>
+            <div className="input-md">
+              <label htmlFor="pt1_last">Family Name (Last)</label>
+              <input id="pt1_last" type="text" className="input" placeholder="e.g., Doe" />
+            </div>
+            <div className="input-md">
+              <label htmlFor="pt1_first">Given Name (First)</label>
+              <input id="pt1_first" type="text" className="input" placeholder="e.g., John" />
+            </div>
+            <div className="input-md">
+              <label htmlFor="pt1_middle">Middle Name</label>
+              <input id="pt1_middle" type="text" className="input" placeholder="" />
+            </div>
           </div>
+        </section>
 
-          <div className="field-span-6">
-            <label className="block text-sm font-medium mb-1">{await t('Last name')}</label>
-            <input type="text" className="input" name="petitioner.lastName" />
-          </div>
-
-          {/* …your existing fields… */}
-
-          <div className="field-span-12 mt-4">
-            <button type="submit" className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-semibold hover:bg-gray-50">
-              {await t('Save Progress')}
-            </button>
-          </div>
-        </form>
+        {/* Add more sections or mount your real form here */}
       </div>
     </main>
   );
