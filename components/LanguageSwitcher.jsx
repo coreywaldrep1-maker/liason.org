@@ -1,6 +1,8 @@
+// components/LanguageSwitcher.jsx
 'use client';
 
 import { useEffect, useState } from 'react';
+import { LANGS } from '@/lib/i18n-common';
 
 function getLang() {
   const m = document.cookie.match(/(?:^|;\s*)liason_lang=([^;]+)/);
@@ -15,28 +17,23 @@ export default function LanguageSwitcher() {
   async function change(e) {
     const value = e.target.value;
     setLang(value);
-    await fetch('/api/i18n/set', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lang: value })
-    });
-    // reload so SSR translations apply everywhere
-    window.location.reload();
+    try {
+      await fetch('/api/i18n/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lang: value }),
+        credentials: 'include',
+        cache: 'no-store'
+      });
+    } catch {}
+    if (typeof window !== 'undefined') window.location.reload();
   }
 
   return (
-    <select value={lang} onChange={change} aria-label="Language">
-      <option value="en">English</option>
-      <option value="es">Español</option>
-      <option value="fr">Français</option>
-      <option value="de">Deutsch</option>
-      <option value="pt">Português</option>
-      <option value="it">Italiano</option>
-      <option value="zh">中文</option>
-      <option value="ar">العربية</option>
-      <option value="hi">हिन्दी</option>
-      <option value="ru">Русский</option>
-      {/* add/remove as you wish */}
+    <select value={lang} onChange={change} aria-label="Language" className="select">
+      {LANGS.map(l => (
+        <option key={l.code} value={l.code}>{l.label}</option>
+      ))}
     </select>
   );
 }
