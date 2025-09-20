@@ -80,3 +80,25 @@ html, body {
 .header-right .button, .header-right button, .header-right a.button {
   height: 40px; display: inline-flex; align-items: center; justify-content: center; padding-inline: .9rem;
 }
+
+/* === Compact input widths (opt-in via .compact-form) === */
+.compact-form input[type="text"],
+.compact-form input[type="email"],
+.compact-form input[type="tel"],
+.compact-form input[type="date"],
+.compact-form select {
+  width: 100%;
+  max-width: 520px;
+}
+.compact-form textarea {
+  width: 100%;
+  max-width: 680px;
+}
+@media (max-width: 640px) {
+  .compact-form input,
+  .compact-form select,
+  .compact-form textarea {
+    max-width: 100%;
+  }
+}
+
