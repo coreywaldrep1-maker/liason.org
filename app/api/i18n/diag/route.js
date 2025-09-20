@@ -1,15 +1,16 @@
 // app/api/i18n/diag/route.js
 import { NextResponse } from 'next/server';
+import { DEEPL_TARGET } from '@/lib/i18n-common';
 
 export const runtime = 'edge';
 
 export async function GET() {
-  const key = !!process.env.DEEPL_API_KEY;
+  const hasKey = !!process.env.DEEPL_API_KEY;
   const endpoint = process.env.DEEPL_ENDPOINT || 'https://api-free.deepl.com/v2/translate';
+  const supported = Object.entries(DEEPL_TARGET).map(([k,v]) => `${k}→${v}`);
 
-  // Try a tiny sample if the key exists
   let sample = null;
-  if (key) {
+  if (hasKey) {
     try {
       const f = new URLSearchParams();
       f.set('text', 'Hello world');
@@ -31,8 +32,9 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
-    deepl_key_present: key,
+    deepl_key_present: hasKey,
     endpoint,
-    sample: key ? sample : 'No key present',
+    supported,
+    sample: hasKey ? sample : 'No key present',
   });
 }
