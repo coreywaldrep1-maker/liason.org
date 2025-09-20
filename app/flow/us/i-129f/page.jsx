@@ -8,17 +8,15 @@ export default function I129fPage() {
   return (
     <main className="section" data-i18n-scan>
       <div className="container" style={{ display: 'grid', gap: 16 }}>
-        <I129fGate>
-          {/* Keep the form narrow and professional-looking */}
-          <div className="form-width">
+        <div className="compact-form">
+          <I129fGate>
             <I129fWizard />
-          </div>
-
-          {/* Tiny helper link, unchanged */}
-          <p className="small" style={{ marginTop: 8 }}>
-            Debug all fields: <a href="/flow/us/i-129f/all-fields">open</a>
-          </p>
-        </I129fGate>
+            {/* Debug link */}
+            <p className="small" style={{ marginTop: 8 }}>
+              Debug all fields: <a href="/flow/us/i-129f/all-fields">open</a>
+            </p>
+          </I129fGate>
+        </div>
       </div>
     </main>
   );
