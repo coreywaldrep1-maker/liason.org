@@ -1,36 +1,32 @@
-// components/LanguageSwitcher.jsx
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LANGS } from '@/lib/i18n-common';
+import { LANGS, LANG_COOKIE } from '@/lib/i18n-common';
 
-function getLang() {
-  const m = document.cookie.match(/(?:^|;\s*)liason_lang=([^;]+)/);
+function getLangFromCookie() {
+  const m = document.cookie.match(new RegExp(`(?:^|; )${LANG_COOKIE}=([^;]*)`));
   return m ? decodeURIComponent(m[1]) : 'en';
 }
 
-export default function LanguageSwitcher() {
+export default function LanguageSwitcher({ className = '' }) {
   const [lang, setLang] = useState('en');
 
-  useEffect(() => { setLang(getLang()); }, []);
+  useEffect(() => { setLang(getLangFromCookie()); }, []);
 
   async function change(e) {
     const value = e.target.value;
     setLang(value);
-    try {
-      await fetch('/api/i18n/set', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lang: value }),
-        credentials: 'include',
-        cache: 'no-store'
-      });
-    } catch {}
-    if (typeof window !== 'undefined') window.location.reload();
+    await fetch('/api/i18n/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang: value }),
+    });
+    // Reload so SSR strings (t/tr) render in the chosen language
+    window.location.reload();
   }
 
   return (
-    <select value={lang} onChange={change} aria-label="Language" className="select">
+    <select value={lang} onChange={change} aria-label="Language" className={className}>
       {LANGS.map(l => (
         <option key={l.code} value={l.code}>{l.label}</option>
       ))}
