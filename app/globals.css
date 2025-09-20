@@ -1,152 +1,82 @@
-/* ==========================================================================
-   Tailwind base
-   ========================================================================== */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* ==========================================================================
-   Base: light, modern look (subtle gradient), crisp typography
-   ========================================================================== */
-@layer base {
-  :root {
-    color-scheme: light;
-  }
-
-  html, body {
-    @apply text-neutral-900 antialiased;
-    /* Very light, modern gradient background */
-    background:
-      radial-gradient(1200px 800px at 20% -10%, rgba(45,119,255,0.08), transparent 60%),
-      radial-gradient(1000px 600px at 80% -10%, rgba(111,66,193,0.06), transparent 60%),
-      #f7f8fb;
-    min-height: 100%;
-  }
-
-  /* Improve focus rings for accessibility */
-  *:focus-visible {
-    @apply outline-none ring-2 ring-blue-500/60 ring-offset-2 ring-offset-white;
-  }
-
-  a {
-    @apply text-blue-600 hover:text-blue-700 hover:underline;
-  }
+/* --- Samsung-like light gradient background --- */
+html, body {
+  background:
+    radial-gradient(900px 600px at 12% -18%, rgba(165,180,252,0.18), transparent 60%),
+    radial-gradient(900px 600px at 88% -10%, rgba(96,165,250,0.14), transparent 60%),
+    linear-gradient(180deg, var(--bg-2, #fafafa), var(--bg-1, #ffffff));
 }
 
-/* ==========================================================================
-   Components: header glass, cards, inputs, buttons, tabs, containers
-   ========================================================================== */
-@layer components {
-  /* Header glass look (used by Header.jsx wrapper) */
-  .glass {
-    @apply bg-white/85 backdrop-blur supports-[backdrop-filter]:bg-white/65;
-  }
+/* --- Header grid stays (menu+lang left, brand center, auth right) --- */
+.header-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 56px;
+  gap: .75rem;
+}
+.header-left, .header-right { display: flex; align-items: center; gap: .5rem; }
+.header-right { justify-content: flex-end; }
+.header-center { display: flex; justify-content: center; }
+.brand { font-weight: 800; font-size: 1.05rem; letter-spacing: .2px; color: var(--text, #0f172a); text-decoration: none; }
 
-  /* Page container (use on main wrappers) */
-  .container {
-    @apply mx-auto max-w-6xl px-4;
-  }
+/* --- Menu styles --- */
+.menu { position: relative; }
+.menu > summary {
+  list-style: none; cursor: pointer; width: 40px; height: 40px; border-radius: 10px;
+  display: grid; place-items: center; border: 1px solid var(--border, rgba(2,6,23,.08));
+  background: #fff; box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.05));
+}
+.menu > summary::-webkit-details-marker { display: none; }
+.menu-icon { width: 18px; height: 2px; background: #0f172a; position: relative; display: block; }
+.menu-icon::before, .menu-icon::after {
+  content: ""; position: absolute; left: 0; width: 18px; height: 2px; background: #0f172a;
+}
+.menu-icon::before { top: -6px; } .menu-icon::after { top: 6px; }
+.menu-sheet {
+  position: absolute; top: 48px; left: 0; z-index: 40; min-width: 220px; background: #fff;
+  border: 1px solid var(--border, rgba(2,6,23,.08)); border-radius: 12px;
+  box-shadow: var(--shadow-lg, 0 10px 30px rgba(2,6,23,.08)); padding: .5rem; display: grid;
+}
+.menu-sheet a { color: #0f172a; text-decoration: none; padding: .5rem .6rem; border-radius: 8px; }
+.menu-sheet a:hover { background: #f5f7fb; }
 
-  /* Card surface */
-  .card {
-    @apply bg-white/95 rounded-xl border shadow-sm;
-  }
+/* --- Language select next to menu --- */
+.lang-select-form { display: inline-block; }
+.select {
+  appearance: none;
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid var(--border, rgba(2,6,23,.10));
+  border-radius: 10px;
+  padding: .5rem .9rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.05));
+  cursor: pointer;
+}
+.select:focus { outline: none; box-shadow: 0 0 0 3px rgba(99,102,241,.18); border-color: rgba(37,99,235,.45); }
 
-  /* Inputs (keep them from spanning full viewport on desktop) */
-  .input,
-  input[type="text"],
-  input[type="email"],
-  input[type="password"],
-  input[type="date"],
-  input[type="tel"],
-  input[type="number"],
-  select,
-  textarea {
-    @apply w-full max-w-md rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm shadow-[inset_0_1px_0_rgba(0,0,0,0.02)];
-  }
+/* --- Keep inputs from going edge-to-edge on desktop --- */
+.form-width { max-width: 720px; margin: 0 auto; }       /* wrap your form in this */
+.input, input, select, textarea { width: 100%; }
+.input-md { max-width: 420px; }  /* apply to individual inputs to cap width */
+.input-lg { max-width: 560px; }
 
-  .input:focus,
-  input:focus,
-  select:focus,
-  textarea:focus {
-    @apply border-blue-500 ring-2 ring-blue-500/20;
-  }
-
-  /* Select element baseline */
-  .select {
-    @apply w-full max-w-md rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm;
-  }
-
-  /* Buttons */
-  .btn {
-    @apply inline-flex items-center justify-center rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50;
-  }
-
-  .btn-primary {
-    @apply inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700;
-  }
-
-  .btn-ghost {
-    @apply inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100;
-  }
-
-  /* Tabs (used for I-129F top tabs) */
-  .tabs {
-    @apply mb-6 flex items-center gap-1 overflow-x-auto;
-  }
-  .tab {
-    @apply px-3 py-2 text-sm font-medium border-b-2 border-transparent hover:border-black/40 hover:text-black;
-  }
-  .tab-active {
-    @apply border-black text-black;
-  }
+/* On small screens, let them be full-width */
+@media (max-width: 640px) {
+  .input-md, .input-lg { max-width: 100%; }
 }
 
-/* ==========================================================================
-   Layout helpers: form grid (prevents 100% width on desktop), spacers
-   ========================================================================== */
-@layer utilities {
-  /* Wrap forms with this grid container */
-  .form-wrap {
-    @apply grid gap-5;
-  }
-
-  /* Desktop: 12-column grid; on mobile it gracefully stacks */
-  @media (min-width: 1024px) {
-    .form-wrap {
-      grid-template-columns: repeat(12, minmax(0, 1fr));
-    }
-    .field-span-12 { grid-column: span 12 / span 12; }
-    .field-span-9  { grid-column: span 9 / span 9; }
-    .field-span-8  { grid-column: span 8 / span 8; }
-    .field-span-6  { grid-column: span 6 / span 6; }
-    .field-span-4  { grid-column: span 4 / span 4; }
-    .field-span-3  { grid-column: span 3 / span 3; }
-  }
-
-  /* Section headers / dividers */
-  .section-title {
-    @apply text-lg font-semibold text-neutral-900;
-  }
-  .section-subtle {
-    @apply text-sm text-neutral-600;
-  }
-  .divider {
-    @apply h-px w-full bg-neutral-200;
-  }
+/* --- Tabs (black text on light) --- */
+.tabs {
+  display: flex; gap: .4rem; flex-wrap: wrap; padding: .5rem; background: #ffffff;
+  border: 1px solid var(--border, rgba(2,6,23,.08)); border-radius: 12px;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.05));
 }
+.tab { color: #0f172a; text-decoration: none; font-weight: 600; padding: .5rem .7rem; border-radius: 10px; border: 1px solid transparent; }
+.tab:hover { background: #f5f7fb; border-color: rgba(2,6,23,.08); }
+.tab.active { background: #eef2ff; border-color: rgba(99,102,241,.35); color: #1e293b; }
 
-/* ==========================================================================
-   Optional: narrow scrollbars on desktop (chromium/webkit)
-   ========================================================================== */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-thumb {
-  background-color: rgba(0,0,0,0.15);
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-track {
-  background-color: transparent;
+/* --- Button height alignment in header --- */
+.header-right .button, .header-right button, .header-right a.button {
+  height: 40px; display: inline-flex; align-items: center; justify-content: center; padding-inline: .9rem;
 }
