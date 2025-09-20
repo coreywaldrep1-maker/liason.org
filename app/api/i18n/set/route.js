@@ -1,19 +1,18 @@
-import { NextResponse } from 'next/server';
+// app/api/i18n/set/route.js
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-export async function POST(request) {
-  try {
-    const { lang } = await request.json();
-    if (!lang) return NextResponse.json({ ok:false, error:'lang required' }, { status:400 });
-    const res = NextResponse.json({ ok:true });
-    // 365 days
-    res.cookies.set('liason_lang', lang, {
-      path: '/',
-      maxAge: 60 * 60 * 24 * 365,
-      sameSite: 'lax',
-      secure: true,
-    });
-    return res;
-  } catch (e) {
-    return NextResponse.json({ ok:false, error:String(e) }, { status:500 });
-  }
+import { NextResponse } from 'next/server';
+import { LANG_COOKIE } from '@/lib/i18n-common';
+
+export async function POST(req) {
+  const { lang } = await req.json().catch(() => ({}));
+  const res = NextResponse.json({ ok: true, lang: String(lang || 'en') });
+  res.cookies.set(LANG_COOKIE, String(lang || 'en'), {
+    path: '/',
+    maxAge: 60 * 60 * 24 * 365,
+    sameSite: 'lax',
+    secure: true,
+  });
+  return res;
 }
