@@ -7,13 +7,26 @@ export const dynamic = 'force-dynamic';
 export default function I129fPage() {
   return (
     <main className="section" data-i18n-scan>
-      <div className="container" style={{ display: 'grid', gap: 16 }}>
-        <I129fGate>
-          <I129fWizard />
-          <p className="small" style={{ marginTop: 8 }}>
-            Debug all fields: <a href="/flow/us/i-129f/all-fields">open</a>
-          </p>
-        </I129fGate>
+      {/* Outer container stays full width */}
+      <div className="container">
+        {/* This inner wrapper restores the previous, narrower content width */}
+        <div
+          style={{
+            maxWidth: 760,        // <- adjust if you want a bit wider/narrower
+            margin: '0 auto',
+            display: 'grid',
+            gap: 16,
+          }}
+        >
+          <I129fGate>
+            <I129fWizard />
+
+            {/* Debug link (only shows a tiny helper link) */}
+            <p className="small" style={{ marginTop: 8 }}>
+              Debug all fields: <a href="/flow/us/i-129f/all-fields">open</a>
+            </p>
+          </I129fGate>
+        </div>
       </div>
     </main>
   );
