@@ -10,7 +10,7 @@ const SECTIONS = [
   { key: 'p1_ident',    label: 'Part 1 — Petitioner (Identity)' },
   { key: 'p1_addr',     label: 'Part 1 — Addresses' },
   { key: 'p1_emp',      label: 'Part 1 — Employment' },
-  { key: 'p1_personal', label: 'Part 1 — Personal details' }, // NEW
+  { key: 'p1_personal', label: 'Part 1 — Personal details' },
   { key: 'p1_par',      label: 'Part 1 — Parents & Naturalization' },
 
   { key: 'p2_ident',    label: 'Part 2 — Beneficiary (Identity)' },
@@ -39,9 +39,9 @@ const EMPTY = {
     ],
     natzNumber:'', natzPlace:'', natzDate:'',
 
-    // ---- NEW fields used by mapping Pt1 Lines 1–5 & 21–26 ----
+    // Part 1, lines 1–5 & 21–26
     petitionType: 'K1',     // 'K1' | 'K3'
-    k3FiledI130: '',        // 'yes' | 'no' (or boolean)
+    k3FiledI130: '',        // 'yes' | 'no'
     sex: '',                // 'Male' | 'Female'
     dob: '',                // MM/DD/YYYY
     maritalStatus: '',      // Single | Married | Divorced | Widowed
@@ -93,7 +93,6 @@ const EMPTY = {
     line3d:'', line4d:'', line5d:'', line6d:'', line7d:''
   },
 
-  // Power override for any exact AcroForm field names → value
   other: {},
 };
 
@@ -126,8 +125,7 @@ function setPath(obj, path, value) {
 }
 
 /* ----------------------------------------
-   Date helpers: keep MM/DD/YYYY in state,
-   show <input type="date"> (YYYY-MM-DD) in UI
+   Date helpers
 ---------------------------------------- */
 function isoToUs(iso) {
   if (!iso) return '';
@@ -147,11 +145,8 @@ function usToIso(us) {
 }
 function normalizeUs(s) {
   if (!s) return '';
-  // try ISO first
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return isoToUs(s);
-  // if it's already US-ish, return as is
-  if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) return s;
-  // attempt Date parsing
+  if (/^\d{1,2}\/\d{1,2}\/(\d{2}|\d{4})$/.test(s)) return s;
   const d = new Date(s);
   if (!isNaN(d.getTime())) {
     const mm = String(d.getMonth()+1).padStart(2,'0');
@@ -205,11 +200,8 @@ export default function I129fWizard() {
         if (!r.ok) return;
         const j = await r.json();
         if (j?.ok && j.data) {
-          // shallow merge over EMPTY so required arrays exist
           const merged = structuredClone(EMPTY);
-          // copy incoming keys over defaults
           Object.assign(merged, j.data);
-          // deep-ish merge specific subtrees that often are missing
           merged.petitioner = { ...EMPTY.petitioner, ...(j.data.petitioner||{}) };
           merged.mailing = { ...EMPTY.mailing, ...(j.data.mailing||{}) };
           merged.beneficiary = { ...EMPTY.beneficiary, ...(j.data.beneficiary||{}) };
@@ -253,10 +245,8 @@ export default function I129fWizard() {
     });
   }
 
-  // spill extras (>2 entries) into Part 8 automatically on save
   function spillExtrasIntoPart8(n) {
     const extras = [];
-
     const petOther = (n.petitioner?.otherNames||[]).slice(2);
     if (petOther.length) {
       const lines = petOther.map((x,i)=>`Petitioner Other Name #${i+3}: ${x.lastName||''}, ${x.firstName||''} ${x.middleName||''}`.trim());
@@ -272,7 +262,6 @@ export default function I129fWizard() {
       const lines = benOther.map((x,i)=>`Beneficiary Other Name #${i+3}: ${x.lastName||''}, ${x.firstName||''} ${x.middleName||''}`.trim());
       extras.push(lines.join(' | '));
     }
-
     const joined = extras.join(' || ');
     if (joined) {
       const cur = (n.part8?.line3d || '').trim();
@@ -287,13 +276,11 @@ export default function I129fWizard() {
     try {
       const normalized = structuredClone(form);
 
-      // normalize date strings to MM/DD/YYYY consistently
       const datePaths = [
         'petitioner.natzDate',
         'beneficiary.dob',
         'preparer.signDate',
         'interpreter.signDate',
-        // NEW:
         'petitioner.dob',
       ];
       datePaths.forEach(p => {
@@ -320,7 +307,6 @@ export default function I129fWizard() {
         if (e?.to)   setPath(normalized, `beneficiary.employment.${i}.to`, normalizeUs(e.to));
       });
 
-      // spill extras (>2) into Part 8 automatically
       spillExtrasIntoPart8(normalized);
 
       const resp = await fetch('/api/i129f/save', {
@@ -359,7 +345,7 @@ export default function I129fWizard() {
             cursor:'pointer'
           }}
           title={s.label}
-          data-i18n-keep="1"           // keep labels stable under translation
+          data-i18n-keep="1"
         >
           {i+1}. {s.label}
         </button>
@@ -388,9 +374,7 @@ export default function I129fWizard() {
       }} />}
       {step===2 && <Part1Employment form={form} update={update} add={add} remove={remove} />}
 
-      {/* NEW section */}
       {step===3 && <Part1Personal form={form} update={update} />}
-
       {step===4 && <Part1ParentsNatz form={form} update={update} />}
 
       {step===5 && <Part2Identity form={form} update={update} add={add} remove={remove} />}
@@ -427,7 +411,7 @@ export default function I129fWizard() {
 }
 
 /* ----------------------------------------
-   Sections (safe: no direct .parents[idx].xxx)
+   Sections
 ---------------------------------------- */
 
 function Part1Identity({ form, update, add, remove }) {
@@ -438,54 +422,7 @@ function Part1Identity({ form, update, add, remove }) {
     <section style={{display:'grid', gap:10}}>
       <h3 style={{margin:0}}>Part 1 — Petitioner (Identity)</h3>
 
-      {/* NEW — Petition type & K-3 I-130 */}
-      <div className="card" style={{display:'grid', gap:10}}>
-        <div className="small"><strong>Relationship for this petition</strong></div>
-        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
-          <label className="small" style={{display:'flex', alignItems:'center', gap:10}}>
-            <input
-              type="radio"
-              name="pet-type"
-              checked={(pet.petitionType||'K1') === 'K1'}
-              onChange={()=>update('petitioner.petitionType','K1')}
-            />
-            K-1 (Fiancé(e))
-          </label>
-          <label className="small" style={{display:'flex', alignItems:'center', gap:10}}>
-            <input
-              type="radio"
-              name="pet-type"
-              checked={(pet.petitionType||'K1') === 'K3'}
-              onChange={()=>update('petitioner.petitionType','K3')}
-            />
-            K-3 (Spouse)
-          </label>
-        </div>
-
-        {(pet.petitionType||'K1') === 'K3' && (
-          <div className="small" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
-            <label className="small" style={{display:'flex', alignItems:'center', gap:10}}>
-              <input
-                type="radio"
-                name="k3-i130"
-                checked={String(pet.k3FiledI130||'').toLowerCase()==='yes'}
-                onChange={()=>update('petitioner.k3FiledI130','yes')}
-              />
-              I-130 already filed — Yes
-            </label>
-            <label className="small" style={{display:'flex', alignItems:'center', gap:10}}>
-              <input
-                type="radio"
-                name="k3-i130"
-                checked={String(pet.k3FiledI130||'').toLowerCase()==='no'}
-                onChange={()=>update('petitioner.k3FiledI130','no')}
-              />
-              I-130 already filed — No
-            </label>
-          </div>
-        )}
-      </div>
-
+      {/* IDs row */}
       <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10}}>
         <Field label="A-Number">
           <input value={pet.aNumber||''} onChange={e=>update('petitioner.aNumber', e.target.value)} />
@@ -498,6 +435,56 @@ function Part1Identity({ form, update, add, remove }) {
         </Field>
       </div>
 
+      {/* COMPACT: petition type, right after SSN */}
+      <div className="small" style={{display:'grid', gap:6}}>
+        <div>Select one box below to indicate the classification you are requesting for your beneficiary:</div>
+        <div style={{display:'flex', gap:16, flexWrap:'wrap'}}>
+          <label className="small" style={{display:'flex', alignItems:'center', gap:8}}>
+            <input
+              type="radio"
+              name="pet-type"
+              checked={(pet.petitionType||'K1') === 'K1'}
+              onChange={()=>update('petitioner.petitionType','K1')}
+            />
+            K-1 (Fiancé(e))
+          </label>
+          <label className="small" style={{display:'flex', alignItems:'center', gap:8}}>
+            <input
+              type="radio"
+              name="pet-type"
+              checked={(pet.petitionType||'K1') === 'K3'}
+              onChange={()=>update('petitioner.petitionType','K3')}
+            />
+            K-3 (Spouse)
+          </label>
+
+          {(pet.petitionType||'K1') === 'K3' && (
+            <span style={{display:'flex', alignItems:'center', gap:8}}>
+              <span>| I-130 filed?</span>
+              <label className="small" style={{display:'flex', alignItems:'center', gap:6}}>
+                <input
+                  type="radio"
+                  name="k3-i130"
+                  checked={String(pet.k3FiledI130||'').toLowerCase()==='yes'}
+                  onChange={()=>update('petitioner.k3FiledI130','yes')}
+                />
+                Yes
+              </label>
+              <label className="small" style={{display:'flex', alignItems:'center', gap:6}}>
+                <input
+                  type="radio"
+                  name="k3-i130"
+                  checked={String(pet.k3FiledI130||'').toLowerCase()==='no'}
+                  onChange={()=>update('petitioner.k3FiledI130','no')}
+                />
+                No
+              </label>
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Legal name */}
       <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10}}>
         <Field label="Family name (last)">
           <input value={pet.lastName||''} onChange={e=>update('petitioner.lastName', e.target.value)} />
@@ -510,6 +497,7 @@ function Part1Identity({ form, update, add, remove }) {
         </Field>
       </div>
 
+      {/* Other names */}
       <div className="small" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <strong>Other Names Used</strong>
         <button type="button" className="btn" onClick={onAddOther}>+ Add other name</button>
@@ -1220,7 +1208,7 @@ function Part8Additional({ form, update, add, remove }) {
           <textarea rows={3} value={form.part8?.line3d||''} onChange={e=>update('part8.line3d', e.target.value)} />
         </Field>
         <Field label="Line 4d — Additional info">
-          <textarea rows={3} value={form.part8?.line4d||''} onChange={e=>update('part8.line4d', e.target.value)} />
+          <textarea rows={3} value={form.part8?.line4d||''} onChange={e=>update('part8.line4d', e.target value)} />
         </Field>
         <Field label="Line 5d — Additional info">
           <textarea rows={3} value={form.part8?.line5d||''} onChange={e=>update('part8.line5d', e.target.value)} />
