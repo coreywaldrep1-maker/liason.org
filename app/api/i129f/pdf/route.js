@@ -6,7 +6,6 @@ import { NextResponse } from "next/server";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { PDFDocument, StandardFonts } from "pdf-lib";
-
 import { applyI129fMapping } from "@/lib/i129f-mapping";
 
 const TEMPLATE_RELATIVE = "public/i-129f.pdf";
@@ -86,6 +85,20 @@ async function loadSavedForRequest(request) {
   return { source: null, saved: null };
 }
 
+// set a temporary global for legacy mappers that reference `form`
+function withGlobalForm(pdfForm, fn) {
+  const prev1 = globalThis.form;
+  const prev2 = globalThis.__pdfForm;
+  globalThis.form = pdfForm;
+  globalThis.__pdfForm = pdfForm;
+  try {
+    return fn();
+  } finally {
+    if (prev1 === undefined) delete globalThis.form; else globalThis.form = prev1;
+    if (prev2 === undefined) delete globalThis.__pdfForm; else globalThis.__pdfForm = prev2;
+  }
+}
+
 // ---------- route ----------
 export async function GET(request) {
   try {
@@ -98,13 +111,18 @@ export async function GET(request) {
       const pdfBytes = await loadTemplate();
       const pdfDoc = await PDFDocument.load(pdfBytes, { updateMetadata: true, ignoreEncryption: true });
       const pdfForm = pdfDoc.getForm();
-      const form = pdfForm; // <-- alias for mappers that look up a global `form`
       const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
       try { pdfForm.updateFieldAppearances(helv); } catch {}
-      // call mapper (supports both signatures applyI129fMapping(saved) or (saved, form))
-      try { applyI129fMapping(sampleSaved(), pdfForm); } catch { applyI129fMapping(sampleSaved()); }
+
+      // support both (saved, form) and legacy (saved) mappers
+      withGlobalForm(pdfForm, () => {
+        try { applyI129fMapping(sampleSaved(), pdfForm); } catch { applyI129fMapping(sampleSaved()); }
+      });
+
       try { pdfForm.updateFieldAppearances(helv); } catch {}
       if (flatten) pdfForm.flatten();
+
       const out = await pdfDoc.save();
       return new NextResponse(out, {
         status: 200,
@@ -133,11 +151,15 @@ export async function GET(request) {
     const pdfBytes = await loadTemplate();
     const pdfDoc = await PDFDocument.load(pdfBytes, { updateMetadata: true, ignoreEncryption: true });
     const pdfForm = pdfDoc.getForm();
-    const form = pdfForm; // <-- alias fixes “form is not defined” in older mappers
     const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
     try { pdfForm.updateFieldAppearances(helv); } catch {}
-    try { applyI129fMapping(saved, pdfForm); } catch { applyI129fMapping(saved); }
+
+    // support both (saved, form) and legacy (saved) mappers
+    withGlobalForm(pdfForm, () => {
+      try { applyI129fMapping(saved, pdfForm); } catch { applyI129fMapping(saved); }
+    });
+
     try { pdfForm.updateFieldAppearances(helv); } catch {}
     if (flatten) pdfForm.flatten();
 
