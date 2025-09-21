@@ -1,168 +1,66 @@
 // app/api/i129f/pdf/route.js
-// Fill PDF from your app's own endpoints only (no DB). Keeps AcroForms by default.
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+import { NextResponse } from 'next/server';
+import { PDFDocument } from 'pdf-lib';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
-import { NextResponse } from "next/server";
-import path from "node:path";
-import { readFile, access } from "node:fs/promises";
-import { constants as FS } from "node:fs";
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { applyI129fMapping } from '@/lib/i129f-mapping';
 
-import { applyI129fMapping } from "@/lib/i129f-mapping";
+// CHANGE THIS if your template lives elsewhere
+const TEMPLATE_PATH = path.join(process.cwd(), 'public', 'pdf', 'I-129F-template.pdf');
 
-// Likely template locations
-const CANDIDATE_PDFS = [
-  "public/i-129f.pdf",
-  "public/forms/i-129f.pdf",
-  "public/us/i-129f.pdf",
-];
-
-async function resolveTemplatePath() {
-  for (const rel of CANDIDATE_PDFS) {
-    const p = path.join(process.cwd(), rel);
-    try { await access(p, FS.R_OK); return p; } catch {}
-  }
-  // fallback to the first (will throw later if missing)
-  return path.join(process.cwd(), CANDIDATE_PDFS[0]);
-}
-
-async function loadTemplate() {
-  const filePath = await resolveTemplatePath();
-  return readFile(filePath);
-}
-
-// -------- fetch helpers --------
-async function fetchJsonOrNull(url, cookie) {
+export async function GET() {
   try {
-    const res = await fetch(url, {
-      headers: cookie ? { cookie } : {},
-      cache: "no-store",
+    // 1) Load saved data the same way your wizard saves it
+    const loadResp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ''}/api/i129f/load`, {
+      cache: 'no-store',
+      headers: { 'accept': 'application/json' },
+      // credentials not needed server-to-server, but harmless if your load checks auth cookie
     });
-    if (!res.ok) return null;
-    return await res.json().catch(() => null);
-  } catch {
-    return null;
-  }
-}
 
-// Accept many shapes your endpoints might return
-function extractSaved(json) {
-  if (!json || typeof json !== "object") return null;
-
-  // Common wrappers
-  if (json.data && typeof json.data === "object") return json.data;
-  if (json.saved && typeof json.saved === "object") return json.saved;
-  if (json.i129f && typeof json.i129f === "object") return json.i129f;
-  if (json.form && typeof json.form === "object") return json.form;
-
-  // Arrays / rows
-  if (Array.isArray(json.rows) && json.rows[0]?.data && typeof json.rows[0].data === "object") {
-    return json.rows[0].data;
-  }
-  if (Array.isArray(json.items) && json.items[0] && typeof json.items[0] === "object") {
-    return json.items[0];
-  }
-
-  // Heuristic: looks like the saved object itself
-  const guessKeys = ["petitioner", "beneficiary", "mailing", "employment", "physicalAddresses"];
-  if (guessKeys.some(k => k in json)) return json;
-
-  return null;
-}
-
-async function loadSavedFromAppEndpoints(request, dbg) {
-  const cookie = request.headers.get("cookie") || "";
-  const origin = new URL(request.url).origin;
-
-  // 1) /api/i129f/data
-  const j1 = await fetchJsonOrNull(`${origin}/api/i129f/data`, cookie);
-  dbg.tried = { ...(dbg.tried || {}), data: Boolean(j1) };
-  const s1 = extractSaved(j1);
-  if (s1) return { source: "/api/i129f/data", saved: s1 };
-
-  // 2) /api/i129f/load
-  const j2 = await fetchJsonOrNull(`${origin}/api/i129f/load`, cookie);
-  dbg.tried.load = Boolean(j2);
-  const s2 = extractSaved(j2);
-  if (s2) return { source: "/api/i129f/load", saved: s2 };
-
-  // 3) /api/i129f (some apps expose current saved object here)
-  const j3 = await fetchJsonOrNull(`${origin}/api/i129f`, cookie);
-  dbg.tried.root = Boolean(j3);
-  const s3 = extractSaved(j3);
-  if (s3) return { source: "/api/i129f", saved: s3 };
-
-  return { source: null, saved: null };
-}
-
-export async function GET(request) {
-  const debug = { tried: { data: false, load: false, root: false }, source: null, keys: [] };
-
-  try {
-    const url = new URL(request.url);
-    const flatten = url.searchParams.get("flatten") === "1";
-    const wantDebug = url.searchParams.get("debug") === "1";
-
-    // 1) Load saved JSON from your own API (session cookies included)
-    const { source, saved } = await loadSavedFromAppEndpoints(request, debug);
-    debug.source = source || null;
-    debug.keys = saved ? Object.keys(saved) : [];
-
-    if (wantDebug) {
-      return NextResponse.json(
-        { ok: Boolean(saved), debug, sample: saved ? Object.keys(saved) : null },
-        { status: saved ? 200 : 404 }
-      );
+    if (!loadResp.ok) {
+      const txt = await loadResp.text().catch(() => '');
+      throw new Error(`Failed to load saved data (${loadResp.status}): ${txt}`);
     }
 
-    if (!saved) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "No saved I-129F data found for this session. Make sure you are logged in to the same browser and have saved progress.",
-          hint:
-            "Open /api/i129f/data (or /api/i129f/load) in the SAME session; or call /api/i129f/pdf?debug=1 to see what the server can access.",
-          debug,
-        },
-        { status: 404 }
-      );
+    const loadJson = await loadResp.json();
+    if (!loadJson?.ok || !loadJson?.data) {
+      throw new Error('No saved data for I-129F.');
     }
 
-    // 2) Load template
-    const pdfBytes = await loadTemplate();
+    const saved = loadJson.data;
 
-    // 3) Open PDF, embed Helvetica, and prebuild appearances so fields show without flattening
-    const pdfDoc = await PDFDocument.load(pdfBytes, {
-      updateMetadata: true,
-      ignoreEncryption: true,
-    });
-    const form = pdfDoc.getForm();
-    const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    try { form.updateFieldAppearances(helv); } catch {}
+    // 2) Read the PDF template bytes
+    const templateBytes = await fs.readFile(TEMPLATE_PATH);
 
-    // 4) Fill fields
-    applyI129fMapping(saved, form);
+    // 3) Fill the form
+    const pdfDoc = await PDFDocument.load(templateBytes);
+    const pdfForm = pdfDoc.getForm(); // NOTE: use pdfForm (NOT "form") to avoid shadowing bugs
 
-    // 5) Rebuild appearances; keep AcroForm unless explicitly flattened
-    try { form.updateFieldAppearances(helv); } catch {}
-    if (flatten) form.flatten();
+    // Push JSON → PDF fields
+    applyI129fMapping(saved, pdfForm);
 
-    // 6) Save & return
-    const out = await pdfDoc.save();
-    return new NextResponse(out, {
+    // 4) Flatten (optional) and output
+    // pdfForm.flatten(); // uncomment if you want non-editable filled fields
+
+    const outBytes = await pdfDoc.save();
+
+    return new NextResponse(outBytes, {
       status: 200,
       headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": 'attachment; filename="i-129f.pdf"',
-        "Cache-Control": "no-store",
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'attachment; filename="I-129F.pdf"',
+        'Cache-Control': 'no-store',
       },
     });
   } catch (err) {
+    // Helpful JSON error instead of a hard 500
     return NextResponse.json(
-      { ok: false, error: String(err && err.stack ? err.stack : err), debug },
-      { status: 500 }
+      {
+        ok: false,
+        error: String(err?.stack || err?.message || err),
+      },
+      { status: 400 }
     );
   }
 }
