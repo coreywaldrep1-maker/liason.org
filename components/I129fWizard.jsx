@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 /* ----------------------------------------
-   Sections (tab labels)
+   Sections
 ---------------------------------------- */
 const SECTIONS = [
   { key: 'p1_ident', label: 'Part 1 — Petitioner (Identity)' },
@@ -27,23 +27,27 @@ const SECTIONS = [
    Empty Shape (safe defaults)
 ---------------------------------------- */
 const EMPTY = {
+  // top-level flags used by the mapping for K-1/K-3 + I-130
+  classification: '',      // 'k1' | 'k3'
+  k3FiledI130: undefined,  // true | false
+
   petitioner: {
     aNumber: '', uscisOnlineAccount: '', ssn: '',
     lastName: '', firstName: '', middleName: '',
     otherNames: [ { lastName:'', firstName:'', middleName:'' }, { lastName:'', firstName:'', middleName:'' } ],
+
+    // NEW: “Other information”
+    sex: '',                       // 'male' | 'female'
+    dob: '',                       // MM/DD/YYYY
+    maritalStatus: '',             // 'single' | 'married' | 'divorced' | 'widowed'
+    birthCity: '',
+    birthProvinceState: '',
+    birthCountry: '',
+
     phone: '', mobile: '', email: '',
-    // NEW: classification + K-3 I-130 question, personal biodata
-    kClass: '', // 'K1' or 'K3'
-    k3I130Filed: '', // 'Yes' | 'No' | ''
-    sex: '', // 'Male' | 'Female'
-    dob: '', // MM/DD/YYYY
-    maritalStatus: '', // 'Single' | 'Married' | 'Divorced' | 'Widowed'
-    cityBirth: '',
-    provinceBirth: '',
-    countryBirth: '',
     parents: [
-      { lastName:'', firstName:'', middleName:'', dob:'', cityBirth:'', countryBirth:'', nationality:'' },
-      { lastName:'', firstName:'', middleName:'', dob:'', cityBirth:'', countryBirth:'', nationality:'' },
+      { lastName:'', firstName:'', middleName:'', dob:'', sex:'', cityBirth:'', countryBirth:'', nationality:'' },
+      { lastName:'', firstName:'', middleName:'', dob:'', sex:'', cityBirth:'', countryBirth:'', nationality:'' },
     ],
     natzNumber:'', natzPlace:'', natzDate:'',
   },
@@ -98,34 +102,20 @@ const EMPTY = {
 /* ----------------------------------------
    Path helpers
 ---------------------------------------- */
-function splitPath(path) {
-  return Array.isArray(path) ? path : String(path).split('.');
-}
+function splitPath(path) { return Array.isArray(path) ? path : String(path).split('.'); }
 function getPath(obj, path) {
-  const parts = splitPath(path);
-  let cur = obj;
-  for (const p of parts) {
-    if (cur == null) return undefined;
-    cur = cur[p];
-  }
+  const parts = splitPath(path); let cur = obj;
+  for (const p of parts) { if (cur == null) return undefined; cur = cur[p]; }
   return cur;
 }
 function setPath(obj, path, value) {
-  const parts = splitPath(path);
-  const last = parts.pop();
-  let cur = obj;
-  for (const p of parts) {
-    if (cur[p] == null || typeof cur[p] !== 'object') {
-      cur[p] = {};
-    }
-    cur = cur[p];
-  }
+  const parts = splitPath(path); const last = parts.pop(); let cur = obj;
+  for (const p of parts) { if (cur[p] == null || typeof cur[p] !== 'object') cur[p] = {}; cur = cur[p]; }
   cur[last] = value;
 }
 
 /* ----------------------------------------
-   Date helpers: keep MM/DD/YYYY in state,
-   show <input type="date"> (YYYY-MM-DD) in UI
+   Date helpers
 ---------------------------------------- */
 function isoToUs(iso) {
   if (!iso) return '';
@@ -145,13 +135,9 @@ function usToIso(us) {
 }
 function normalizeUs(s) {
   if (!s) return '';
-  // try ISO first
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return isoToUs(s);
-  // if it's already US-ish, return as is
   if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) return s;
-  // attempt Date parsing
-  const d = new Date(s);
-  if (!isNaN(d.getTime())) {
+  const d = new Date(s); if (!isNaN(d.getTime())) {
     const mm = String(d.getMonth()+1).padStart(2,'0');
     const dd = String(d.getDate()).padStart(2,'0');
     const yyyy = String(d.getFullYear());
@@ -203,22 +189,17 @@ export default function I129fWizard() {
         if (!r.ok) return;
         const j = await r.json();
         if (j?.ok && j.data) {
-          // shallow merge over EMPTY so required arrays exist
           const merged = structuredClone(EMPTY);
-          // copy incoming keys over defaults
           Object.assign(merged, j.data);
-          // deep-ish merge specific subtrees that often are missing
           merged.petitioner = { ...EMPTY.petitioner, ...(j.data.petitioner||{}) };
           merged.mailing = { ...EMPTY.mailing, ...(j.data.mailing||{}) };
           merged.beneficiary = { ...EMPTY.beneficiary, ...(j.data.beneficiary||{}) };
           merged.part8 = { ...EMPTY.part8, ...(j.data.part8||{}) };
           merged.other = { ...(j.data.other||{}) };
           merged.physicalAddresses = Array.isArray(j.data.physicalAddresses) && j.data.physicalAddresses.length
-            ? j.data.physicalAddresses
-            : EMPTY.physicalAddresses;
+            ? j.data.physicalAddresses : EMPTY.physicalAddresses;
           merged.employment = Array.isArray(j.data.employment) && j.data.employment.length
-            ? j.data.employment
-            : EMPTY.employment;
+            ? j.data.employment : EMPTY.employment;
           setForm(merged);
         }
       } catch {}
@@ -254,7 +235,6 @@ export default function I129fWizard() {
   // spill extras (>2 entries) into Part 8 automatically on save
   function spillExtrasIntoPart8(n) {
     const extras = [];
-
     const petOther = (n.petitioner?.otherNames||[]).slice(2);
     if (petOther.length) {
       const lines = petOther.map((x,i)=>`Petitioner Other Name #${i+3}: ${x.lastName||''}, ${x.firstName||''} ${x.middleName||''}`.trim());
@@ -270,7 +250,6 @@ export default function I129fWizard() {
       const lines = benOther.map((x,i)=>`Beneficiary Other Name #${i+3}: ${x.lastName||''}, ${x.firstName||''} ${x.middleName||''}`.trim());
       extras.push(lines.join(' | '));
     }
-
     const joined = extras.join(' || ');
     if (joined) {
       const cur = (n.part8?.line3d || '').trim();
@@ -287,8 +266,8 @@ export default function I129fWizard() {
 
       // normalize date strings to MM/DD/YYYY consistently
       const datePaths = [
-        'petitioner.dob',
         'petitioner.natzDate',
+        'petitioner.dob',            // NEW
         'beneficiary.dob',
         'preparer.signDate',
         'interpreter.signDate',
@@ -357,7 +336,7 @@ export default function I129fWizard() {
           }}
           title={s.label}
         >
-          {s.label}
+          {i+1}. {s.label}
         </button>
       ))}
     </div>
@@ -367,7 +346,8 @@ export default function I129fWizard() {
     <div className="card" style={{display:'grid', gap:12}}>
       {Tabs}
 
-      {step===0 && <Part1Identity form={form} update={update} add={add} remove={remove} />}
+      {step===0 && <Part1Identity form={form} update={update} />}
+
       {step===1 && <Part1Addresses form={form} update={update} add={add} remove={remove} onCopyMailing={()=>{
         const m = form.mailing||{};
         const copy = {
@@ -382,6 +362,7 @@ export default function I129fWizard() {
           return next;
         });
       }} />}
+
       {step===2 && <Part1Employment form={form} update={update} add={add} remove={remove} />}
       {step===3 && <Part1ParentsNatz form={form} update={update} />}
 
@@ -419,164 +400,163 @@ export default function I129fWizard() {
 }
 
 /* ----------------------------------------
-   Sections (safe: no direct .parents[idx].xxx)
+   Sections
 ---------------------------------------- */
 
-function Part1Identity({ form, update, add, remove }) {
-  const onAddOther = () => add('petitioner.otherNames', () => ({ lastName:'', firstName:'', middleName:'' }));
-  const other = Array.isArray(form.petitioner?.otherNames) ? form.petitioner.otherNames : [];
-  const p = form.petitioner || {};
+function Part1Identity({ form, update }) {
+  const pet = form.petitioner||{};
   return (
     <section style={{display:'grid', gap:12}}>
       <h3 style={{margin:0}}>Part 1 — Petitioner (Identity)</h3>
 
-      {/* IDs */}
       <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10}}>
         <Field label="A-Number">
-          <input value={p.aNumber||''} onChange={e=>update('petitioner.aNumber', e.target.value)} />
+          <input value={pet.aNumber||''} onChange={e=>update('petitioner.aNumber', e.target.value)} />
         </Field>
         <Field label="USCIS Online Account #">
-          <input value={p.uscisOnlineAccount||''} onChange={e=>update('petitioner.uscisOnlineAccount', e.target.value)} />
+          <input value={pet.uscisOnlineAccount||''} onChange={e=>update('petitioner.uscisOnlineAccount', e.target.value)} />
         </Field>
         <Field label="SSN">
-          <input value={p.ssn||''} onChange={e=>update('petitioner.ssn', e.target.value)} />
+          <input value={pet.ssn||''} onChange={e=>update('petitioner.ssn', e.target.value)} />
         </Field>
       </div>
 
-      {/* Classification K-1 vs K-3 + I-130 question (moved right after SSN per your request) */}
+      {/* NEW: K-1 / K-3 immediately after SSN */}
       <div className="card" style={{display:'grid', gap:8}}>
         <div className="small"><strong>Select one box below to indicate the classification you are requesting for your beneficiary:</strong></div>
-        <div style={{display:'flex', gap:16, alignItems:'center', flexWrap:'wrap'}}>
+        <div style={{display:'flex', gap:20, alignItems:'center', flexWrap:'wrap'}}>
           <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
             <input
               type="radio"
-              name="pet_kclass"
-              checked={p.kClass === 'K1'}
-              onChange={()=>update('petitioner.kClass', 'K1')}
+              name="classification"
+              checked={(form.classification||'')==='k1'}
+              onChange={()=>update('classification','k1')}
             />
-            K-1 fiancé(e) visa
+            K-1 (Fiancé(e))
           </label>
           <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
             <input
               type="radio"
-              name="pet_kclass"
-              checked={p.kClass === 'K3'}
-              onChange={()=>update('petitioner.kClass', 'K3')}
+              name="classification"
+              checked={(form.classification||'')==='k3'}
+              onChange={()=>update('classification','k3')}
             />
-            K-3 spouse visa
+            K-3 (Spouse)
           </label>
-        </div>
 
-        {p.kClass === 'K3' && (
-          <div className="small" style={{display:'flex', gap:16, alignItems:'center'}}>
-            <span>5. If you are filing to classify your spouse as a K-3, have you filed Form I-130?</span>
-            <label style={{display:'flex', gap:6, alignItems:'center'}}>
-              <input
-                type="radio"
-                name="pet_k3_i130"
-                checked={p.k3I130Filed === 'Yes'}
-                onChange={()=>update('petitioner.k3I130Filed','Yes')}
-              />
-              Yes
-            </label>
-            <label style={{display:'flex', gap:6, alignItems:'center'}}>
-              <input
-                type="radio"
-                name="pet_k3_i130"
-                checked={p.k3I130Filed === 'No'}
-                onChange={()=>update('petitioner.k3I130Filed','No')}
-              />
-              No
-            </label>
-          </div>
-        )}
-      </div>
-
-      {/* Names */}
-      <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10}}>
-        <Field label="Family name (last)">
-          <input value={p.lastName||''} onChange={e=>update('petitioner.lastName', e.target.value)} />
-        </Field>
-        <Field label="Given name (first)">
-          <input value={p.firstName||''} onChange={e=>update('petitioner.firstName', e.target.value)} />
-        </Field>
-        <Field label="Middle name">
-          <input value={p.middleName||''} onChange={e=>update('petitioner.middleName', e.target.value)} />
-        </Field>
-      </div>
-
-      {/* Other names */}
-      <div className="small" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-        <strong>Other Names Used</strong>
-        <button type="button" className="btn" onClick={onAddOther}>+ Add other name</button>
-      </div>
-      {other.map((n, i) => (
-        <div key={i} style={{display:'grid', gridTemplateColumns:'repeat(3,1fr) auto', gap:10, alignItems:'end'}}>
-          <Field label={`Other name #${i+1} — Family`}>
-            <input value={n?.lastName||''} onChange={e=>update(`petitioner.otherNames.${i}.lastName`, e.target.value)} />
-          </Field>
-          <Field label="Given">
-            <input value={n?.firstName||''} onChange={e=>update(`petitioner.otherNames.${i}.firstName`, e.target.value)} />
-          </Field>
-          <Field label="Middle">
-            <input value={n?.middleName||''} onChange={e=>update(`petitioner.otherNames.${i}.middleName`, e.target.value)} />
-          </Field>
-          <button type="button" className="btn" onClick={()=>remove('petitioner.otherNames', i)}>Remove</button>
-        </div>
-      ))}
-
-      {/* NEW: Petitioner biodata (Lines 21–26) */}
-      <div className="card" style={{display:'grid', gap:10}}>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
-          <Field label="21. Sex">
-            <div style={{display:'flex', gap:16, alignItems:'center'}}>
-              <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
+          {(form.classification||'')==='k3' && (
+            <div className="small" style={{display:'flex', gap:10, alignItems:'center', marginLeft:12}}>
+              <span>Filed Form I-130?</span>
+              <label style={{display:'flex', gap:6, alignItems:'center'}}>
                 <input
                   type="radio"
-                  name="pet_sex"
-                  checked={p.sex === 'Male'}
-                  onChange={()=>update('petitioner.sex','Male')}
+                  name="k3FiledI130"
+                  checked={form.k3FiledI130 === true}
+                  onChange={()=>update('k3FiledI130', true)}
                 />
-                Male
+                Yes
               </label>
-              <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
+              <label style={{display:'flex', gap:6, alignItems:'center'}}>
                 <input
                   type="radio"
-                  name="pet_sex"
-                  checked={p.sex === 'Female'}
-                  onChange={()=>update('petitioner.sex','Female')}
+                  name="k3FiledI130"
+                  checked={form.k3FiledI130 === false}
+                  onChange={()=>update('k3FiledI130', false)}
                 />
-                Female
+                No
               </label>
             </div>
-          </Field>
-          <Field label="22. Date of Birth">
-            <DateInput value={p.dob||''} onChange={v=>update('petitioner.dob', v)} />
-          </Field>
-          <Field label="23. Marital Status">
-            <select value={p.maritalStatus||''} onChange={e=>update('petitioner.maritalStatus', e.target.value)}>
+          )}
+        </div>
+      </div>
+
+      {/* Legal name */}
+      <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10}}>
+        <Field label="Family name (last)">
+          <input value={pet.lastName||''} onChange={e=>update('petitioner.lastName', e.target.value)} />
+        </Field>
+        <Field label="Given name (first)">
+          <input value={pet.firstName||''} onChange={e=>update('petitioner.firstName', e.target.value)} />
+        </Field>
+        <Field label="Middle name">
+          <input value={pet.middleName||''} onChange={e=>update('petitioner.middleName', e.target.value)} />
+        </Field>
+      </div>
+
+      {/* Other Names Used */}
+      <OtherNames block="petitioner" form={form} update={update} />
+
+      {/* NEW: Other information (21–26) */}
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Other Information</strong></div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10}}>
+          <Field label="Sex">
+            <select value={pet.sex||''} onChange={e=>update('petitioner.sex', e.target.value)}>
               <option value=""></option>
-              <option value="Single">Single</option>
-              <option value="Married">Married</option>
-              <option value="Divorced">Divorced</option>
-              <option value="Widowed">Widowed</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+          </Field>
+          <Field label="Date of Birth">
+            <DateInput value={pet.dob||''} onChange={v=>update('petitioner.dob', v)} />
+          </Field>
+          <Field label="Marital Status">
+            <select value={pet.maritalStatus||''} onChange={e=>update('petitioner.maritalStatus', e.target.value)}>
+              <option value=""></option>
+              <option value="single">Single</option>
+              <option value="married">Married</option>
+              <option value="divorced">Divorced</option>
+              <option value="widowed">Widowed</option>
             </select>
           </Field>
         </div>
-
-        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
-          <Field label="24. City/Town/Village of Birth">
-            <input value={p.cityBirth||''} onChange={e=>update('petitioner.cityBirth', e.target.value)} />
+        <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10}}>
+          <Field label="City/Town/Village of Birth">
+            <input value={pet.birthCity||''} onChange={e=>update('petitioner.birthCity', e.target.value)} />
           </Field>
-          <Field label="25. Province or State of Birth">
-            <input value={p.provinceBirth||''} onChange={e=>update('petitioner.provinceBirth', e.target.value)} />
+          <Field label="Province/State of Birth">
+            <input value={pet.birthProvinceState||''} onChange={e=>update('petitioner.birthProvinceState', e.target.value)} />
           </Field>
-          <Field label="26. Country of Birth">
-            <input value={p.countryBirth||''} onChange={e=>update('petitioner.countryBirth', e.target.value)} />
+          <Field label="Country of Birth">
+            <input value={pet.birthCountry||''} onChange={e=>update('petitioner.birthCountry', e.target.value)} />
           </Field>
         </div>
       </div>
     </section>
+  );
+}
+
+function OtherNames({ block, form, update }) {
+  const list = Array.isArray(form[block]?.otherNames) ? form[block].otherNames : [];
+  const onAdd = () => {
+    const path = `${block}.otherNames`;
+    update(path, [...list, { lastName:'', firstName:'', middleName:'' }]);
+  };
+  const onRemove = (i) => {
+    const path = `${block}.otherNames`;
+    const next = list.slice(); next.splice(i,1); update(path, next);
+  };
+  return (
+    <>
+      <div className="small" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <strong>Other Names Used</strong>
+        <button type="button" className="btn" onClick={onAdd}>+ Add other name</button>
+      </div>
+      {list.map((n, i) => (
+        <div key={i} style={{display:'grid', gridTemplateColumns:'repeat(3,1fr) auto', gap:10, alignItems:'end'}}>
+          <Field label={`Other name #${i+1} — Family`}>
+            <input value={n?.lastName||''} onChange={e=>update(`${block}.otherNames.${i}.lastName`, e.target.value)} />
+          </Field>
+          <Field label="Given">
+            <input value={n?.firstName||''} onChange={e=>update(`${block}.otherNames.${i}.firstName`, e.target.value)} />
+          </Field>
+          <Field label="Middle">
+            <input value={n?.middleName||''} onChange={e=>update(`${block}.otherNames.${i}.middleName`, e.target.value)} />
+          </Field>
+          <button type="button" className="btn" onClick={()=>onRemove(i)}>Remove</button>
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -777,9 +757,17 @@ function Part1ParentsNatz({ form, update }) {
             <input value={p0.middleName||''} onChange={e=>update('petitioner.parents.0.middleName', e.target.value)} />
           </Field>
         </div>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10}}>
           <Field label="Date of birth">
             <DateInput value={p0.dob||''} onChange={v=>update('petitioner.parents.0.dob', v)} />
+          </Field>
+          {/* NEW: Parent #1 Sex */}
+          <Field label="Sex">
+            <select value={p0.sex||''} onChange={e=>update('petitioner.parents.0.sex', e.target.value)}>
+              <option value=""></option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
           </Field>
           <Field label="City of birth">
             <input value={p0.cityBirth||''} onChange={e=>update('petitioner.parents.0.cityBirth', e.target.value)} />
@@ -806,9 +794,17 @@ function Part1ParentsNatz({ form, update }) {
             <input value={p1.middleName||''} onChange={e=>update('petitioner.parents.1.middleName', e.target.value)} />
           </Field>
         </div>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10}}>
           <Field label="Date of birth">
             <DateInput value={p1.dob||''} onChange={v=>update('petitioner.parents.1.dob', v)} />
+          </Field>
+          {/* NEW: Parent #2 Sex */}
+          <Field label="Sex">
+            <select value={p1.sex||''} onChange={e=>update('petitioner.parents.1.sex', e.target.value)}>
+              <option value=""></option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
           </Field>
           <Field label="City of birth">
             <input value={p1.cityBirth||''} onChange={e=>update('petitioner.parents.1.cityBirth', e.target.value)} />
@@ -1078,9 +1074,6 @@ function Part2Parents({ form, update }) {
             <input value={b0.countryBirth||''} onChange={e=>update('beneficiary.parents.0.countryBirth', e.target.value)} />
           </Field>
         </div>
-        <Field label="Nationality">
-          <input value={b0.nationality||''} onChange={e=>update('beneficiary.parents.0.nationality', e.target.value)} />
-        </Field>
       </div>
 
       <div className="card" style={{display:'grid', gap:10}}>
@@ -1107,9 +1100,6 @@ function Part2Parents({ form, update }) {
             <input value={b1.countryBirth||''} onChange={e=>update('beneficiary.parents.1.countryBirth', e.target.value)} />
           </Field>
         </div>
-        <Field label="Nationality">
-          <input value={b1.nationality||''} onChange={e=>update('beneficiary.parents.1.nationality', e.target.value)} />
-        </Field>
       </div>
     </section>
   );
