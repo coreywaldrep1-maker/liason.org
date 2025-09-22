@@ -8,19 +8,18 @@ import path from 'path';
 
 export async function GET() {
   try {
-    // === Adjust this if your PDF lives somewhere else ===
+    // Adjust if your PDF lives somewhere else:
     const PDF_PATH = path.join(process.cwd(), 'public', 'i-129f.pdf');
 
-    // Load PDF with pdf-lib (same lib your PDF route uses)
     const { PDFDocument } = await import('pdf-lib');
     const bytes = await readFile(PDF_PATH);
     const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
     const form = pdf.getForm();
 
-    const fields = form.getFields().map(f => {
+    const fields = form.getFields().map((f, i) => {
       const type = f.constructor?.name || 'Unknown';
-      const name = f.getName?.() || 'Unknown';
-      return { name, type };
+      const name = f.getName?.() || `Unknown_${i+1}`;
+      return { index: i + 1, name, type };
     });
 
     return NextResponse.json({ ok: true, count: fields.length, fields });
