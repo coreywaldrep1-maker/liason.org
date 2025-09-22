@@ -1,11 +1,23 @@
 // components/I129fWizard.jsx
 'use client';
 
-import { useEffect, useMemo, useState, createContext, useContext, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState, useContext, createContext } from 'react';
 
-/* ----------------------------------------
-   Sections
----------------------------------------- */
+/* ========= Numbering context (for ?num=1) ========= */
+const NumberingCtx = createContext({ ref: { current: 0 }, show: false });
+function useShowNums() {
+  if (typeof window === 'undefined') return false;
+  return /\bnum=1\b/.test(window.location.search);
+}
+function CounterReset() {
+  const ctx = useContext(NumberingCtx);
+  useEffect(() => {
+    if (ctx?.ref) ctx.ref.current = 0;
+  }, [ctx]);
+  return null;
+}
+
+/* ========= Sections (labels only; tabs never numbered) ========= */
 const SECTIONS = [
   { key: 'p1_ident', label: 'Part 1 — Petitioner (Identity)' },
   { key: 'p1_addr',  label: 'Part 1 — Addresses' },
@@ -23,9 +35,7 @@ const SECTIONS = [
   { key: 'review',   label: 'Review & Download' },
 ];
 
-/* ----------------------------------------
-   Empty Shape (safe defaults)
----------------------------------------- */
+/* ========= Empty shape (safe defaults) ========= */
 const EMPTY = {
   petitioner: {
     aNumber: '', uscisOnlineAccount: '', ssn: '',
@@ -70,54 +80,29 @@ const EMPTY = {
     ],
   },
 
-  interpreter: {
-    language:'', email:'', signDate:'', lastName:'', firstName:'', business:'', phone1:'', phone2:''
-  },
+  interpreter: { language:'', email:'', signDate:'', lastName:'', firstName:'', business:'', phone1:'', phone2:'' },
+  preparer:    { lastName:'', firstName:'', business:'', phone:'', mobile:'', email:'', signDate:'' },
 
-  preparer: {
-    lastName:'', firstName:'', business:'', phone:'', mobile:'', email:'', signDate:''
-  },
+  part8: { line3d:'', line4d:'', line5d:'', line6d:'', line7d:'' },
 
-  part8: {
-    line3d:'', line4d:'', line5d:'', line6d:'', line7d:''
-  },
-
-  // Power override for any exact AcroForm field names → value
+  // PDF field overrides
   other: {},
 };
 
-/* ----------------------------------------
-   Path helpers
----------------------------------------- */
-function splitPath(path) {
-  return Array.isArray(path) ? path : String(path).split('.');
-}
+/* ========= Path helpers ========= */
+function splitPath(path) { return Array.isArray(path) ? path : String(path).split('.'); }
 function getPath(obj, path) {
-  const parts = splitPath(path);
-  let cur = obj;
-  for (const p of parts) {
-    if (cur == null) return undefined;
-    cur = cur[p];
-  }
+  const parts = splitPath(path); let cur = obj;
+  for (const p of parts) { if (cur == null) return undefined; cur = cur[p]; }
   return cur;
 }
 function setPath(obj, path, value) {
-  const parts = splitPath(path);
-  const last = parts.pop();
-  let cur = obj;
-  for (const p of parts) {
-    if (cur[p] == null || typeof cur[p] !== 'object') {
-      cur[p] = {};
-    }
-    cur = cur[p];
-  }
+  const parts = splitPath(path); const last = parts.pop(); let cur = obj;
+  for (const p of parts) { if (cur[p] == null || typeof cur[p] !== 'object') cur[p] = {}; cur = cur[p]; }
   cur[last] = value;
 }
 
-/* ----------------------------------------
-   Date helpers: keep MM/DD/YYYY in state,
-   show <input type="date"> (YYYY-MM-DD) in UI
----------------------------------------- */
+/* ========= Date helpers (US <-> ISO) ========= */
 function isoToUs(iso) {
   if (!iso) return '';
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
@@ -136,11 +121,8 @@ function usToIso(us) {
 }
 function normalizeUs(s) {
   if (!s) return '';
-  // try ISO first
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return isoToUs(s);
-  // if it's already US-ish, return as is
   if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) return s;
-  // attempt Date parsing
   const d = new Date(s);
   if (!isNaN(d.getTime())) {
     const mm = String(d.getMonth()+1).padStart(2,'0');
@@ -164,9 +146,7 @@ function DateInput({ value, onChange }) {
   );
 }
 
-/* ----------------------------------------
-   Select helpers
----------------------------------------- */
+/* ========= Select helpers ========= */
 function UnitTypeSelect({ value, onChange }) {
   return (
     <select value={value||''} onChange={e=>onChange(e.target.value)}>
@@ -178,23 +158,14 @@ function UnitTypeSelect({ value, onChange }) {
   );
 }
 
-/* ----------------------------------------
-   Optional field numbering (toggle with ?num=1)
----------------------------------------- */
-const NumberingCtx = createContext(null);
-function NumberingProvider({ show, children }) {
-  const ref = useRef(0); // increments across the page
-  const value = useMemo(() => ({ show, ref }), [show]);
-  return <NumberingCtx.Provider value={value}>{children}</NumberingCtx.Provider>;
-}
-
-/* ----------------------------------------
-   Wizard
----------------------------------------- */
+/* ========= Wizard ========= */
 export default function I129fWizard() {
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(EMPTY);
+
+  const showNums = useShowNums();
+  const counterRef = useRef(0);
 
   // load
   useEffect(() => {
@@ -204,22 +175,17 @@ export default function I129fWizard() {
         if (!r.ok) return;
         const j = await r.json();
         if (j?.ok && j.data) {
-          // shallow merge over EMPTY so required arrays exist
           const merged = structuredClone(EMPTY);
-          // copy incoming keys over defaults
           Object.assign(merged, j.data);
-          // deep-ish merge specific subtrees that often are missing
           merged.petitioner = { ...EMPTY.petitioner, ...(j.data.petitioner||{}) };
-          merged.mailing = { ...EMPTY.mailing, ...(j.data.mailing||{}) };
-          merged.beneficiary = { ...EMPTY.beneficiary, ...(j.data.beneficiary||{}) };
-          merged.part8 = { ...EMPTY.part8, ...(j.data.part8||{}) };
-          merged.other = { ...(j.data.other||{}) };
+          merged.mailing    = { ...EMPTY.mailing,    ...(j.data.mailing||{}) };
+          merged.beneficiary= { ...EMPTY.beneficiary,(j.data.beneficiary||{}) };
+          merged.part8      = { ...EMPTY.part8,      ...(j.data.part8||{}) };
+          merged.other      = { ...(j.data.other||{}) };
           merged.physicalAddresses = Array.isArray(j.data.physicalAddresses) && j.data.physicalAddresses.length
-            ? j.data.physicalAddresses
-            : EMPTY.physicalAddresses;
+            ? j.data.physicalAddresses : EMPTY.physicalAddresses;
           merged.employment = Array.isArray(j.data.employment) && j.data.employment.length
-            ? j.data.employment
-            : EMPTY.employment;
+            ? j.data.employment : EMPTY.employment;
           setForm(merged);
         }
       } catch {}
@@ -233,7 +199,6 @@ export default function I129fWizard() {
       return next;
     });
   }
-
   function add(path, factory) {
     setForm(prev => {
       const next = structuredClone(prev);
@@ -252,10 +217,8 @@ export default function I129fWizard() {
     });
   }
 
-  // spill extras (>2 entries) into Part 8 automatically on save
   function spillExtrasIntoPart8(n) {
     const extras = [];
-
     const petOther = (n.petitioner?.otherNames||[]).slice(2);
     if (petOther.length) {
       const lines = petOther.map((x,i)=>`Petitioner Other Name #${i+3}: ${x.lastName||''}, ${x.firstName||''} ${x.middleName||''}`.trim());
@@ -271,7 +234,6 @@ export default function I129fWizard() {
       const lines = benOther.map((x,i)=>`Beneficiary Other Name #${i+3}: ${x.lastName||''}, ${x.firstName||''} ${x.middleName||''}`.trim());
       extras.push(lines.join(' | '));
     }
-
     const joined = extras.join(' || ');
     if (joined) {
       const cur = (n.part8?.line3d || '').trim();
@@ -286,7 +248,6 @@ export default function I129fWizard() {
     try {
       const normalized = structuredClone(form);
 
-      // normalize date strings to MM/DD/YYYY consistently
       const datePaths = [
         'petitioner.natzDate',
         'beneficiary.dob',
@@ -317,7 +278,6 @@ export default function I129fWizard() {
         if (e?.to)   setPath(normalized, `beneficiary.employment.${i}.to`, normalizeUs(e.to));
       });
 
-      // spill extras (>2) into Part 8 automatically
       spillExtrasIntoPart8(normalized);
 
       const resp = await fetch('/api/i129f/save', {
@@ -357,16 +317,15 @@ export default function I129fWizard() {
           }}
           title={s.label}
         >
-          {i+1}. {s.label}
+          {/* Tabs are never numbered in numbering mode */}
+          {showNums ? s.label : `${i+1}. ${s.label}`}
         </button>
       ))}
     </div>
   );
 
-  const showNums = typeof window !== 'undefined' && /\bnum=1\b/.test(window.location.search);
-
   return (
-    <NumberingProvider show={showNums}>
+    <NumberingCtx.Provider value={{ ref: counterRef, show: showNums }}>
       <div className="card" style={{display:'grid', gap:12}}>
         {Tabs}
 
@@ -418,19 +377,18 @@ export default function I129fWizard() {
           </button>
         </div>
       </div>
-    </NumberingProvider>
+    </NumberingCtx.Provider>
   );
 }
 
-/* ----------------------------------------
-   Sections (safe: no direct .parents[idx].xxx)
----------------------------------------- */
+/* ========= Sections ========= */
 
 function Part1Identity({ form, update, add, remove }) {
   const onAddOther = () => add('petitioner.otherNames', () => ({ lastName:'', firstName:'', middleName:'' }));
   const other = Array.isArray(form.petitioner?.otherNames) ? form.petitioner.otherNames : [];
   return (
     <section style={{display:'grid', gap:10}}>
+      <CounterReset />
       <h3 style={{margin:0}}>Part 1 — Petitioner (Identity)</h3>
       <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10}}>
         <Field label="A-Number">
@@ -483,6 +441,7 @@ function Part1Addresses({ form, update, add, remove, onCopyMailing }) {
   const list = Array.isArray(form.physicalAddresses) ? form.physicalAddresses : [];
   return (
     <section style={{display:'grid', gap:12}}>
+      <CounterReset />
       <h3 style={{margin:0}}>Part 1 — Addresses</h3>
 
       <div className="small"><strong>Mailing Address (Line 8)</strong></div>
@@ -593,6 +552,7 @@ function Part1Employment({ form, update, add, remove }) {
   const list = Array.isArray(form.employment) ? form.employment : [];
   return (
     <section style={{display:'grid', gap:12}}>
+      <CounterReset />
       <h3 style={{margin:0}}>Part 1 — Employment (last 5 years)</h3>
       {list.map((e, i) => {
         const ei = e||{};
@@ -660,6 +620,7 @@ function Part1ParentsNatz({ form, update }) {
   const p1 = (form.petitioner?.parents && form.petitioner.parents[1]) ? form.petitioner.parents[1] : {};
   return (
     <section style={{display:'grid', gap:12}}>
+      <CounterReset />
       <h3 style={{margin:0}}>Part 1 — Parents & Naturalization</h3>
 
       <div className="card" style={{display:'grid', gap:10}}>
@@ -744,6 +705,7 @@ function Part2Identity({ form, update, add, remove }) {
   const onAddOther = () => add('beneficiary.otherNames', () => ({ lastName:'', firstName:'', middleName:'' }));
   return (
     <section style={{display:'grid', gap:12}}>
+      <CounterReset />
       <h3 style={{margin:0}}>Part 2 — Beneficiary (Identity)</h3>
       <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
         <Field label="Family name (last)">
@@ -807,6 +769,7 @@ function Part2Addresses({ form, update }) {
   const phys = b.physicalAddress||{};
   return (
     <section style={{display:'grid', gap:12}}>
+      <CounterReset />
       <h3 style={{margin:0}}>Part 2 — Addresses</h3>
 
       <div className="small"><strong>Mailing</strong></div>
@@ -887,6 +850,7 @@ function Part2Employment({ form, update }) {
   const list = Array.isArray(form.beneficiary?.employment) ? form.beneficiary.employment : [];
   return (
     <section style={{display:'grid', gap:12}}>
+      <CounterReset />
       <h3 style={{margin:0}}>Part 2 — Employment (last 5 years)</h3>
       {list.map((e, i) => {
         const ei = e || {};
@@ -950,6 +914,7 @@ function Part2Parents({ form, update }) {
   const b1 = (form.beneficiary?.parents && form.beneficiary.parents[1]) ? form.beneficiary.parents[1] : {};
   return (
     <section style={{display:'grid', gap:12}}>
+      <CounterReset />
       <h3 style={{margin:0}}>Part 2 — Parents</h3>
 
       <div className="card" style={{display:'grid', gap:10}}>
@@ -1016,6 +981,7 @@ function Part2Parents({ form, update }) {
 function Parts5to7({ form, update }) {
   return (
     <section style={{display:'grid', gap:12}}>
+      <CounterReset />
       <h3 style={{margin:0}}>Parts 5–7 — Contact / Interpreter / Preparer</h3>
 
       <div className="card" style={{display:'grid', gap:10}}>
@@ -1109,13 +1075,13 @@ function Part8Additional({ form, update, add, remove }) {
     const k = `CustomField_${Date.now()}`;
     update(`other.${k}`, '');
   };
-
   const removeOverride = (name) => {
     update(`other.${name}`, undefined);
   };
 
   return (
     <section style={{display:'grid', gap:12}}>
+      <CounterReset />
       <h3 style={{margin:0}}>Part 8 — Additional Information</h3>
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
         <Field label="Line 3d — Additional info">
@@ -1155,20 +1121,15 @@ function Part8Additional({ form, update, add, remove }) {
   );
 }
 
-/* ----------------------------------------
-   Field wrapper (shows numbers only when ?num=1)
----------------------------------------- */
+/* ========= Field wrapper (adds numbers when ?num=1) ========= */
 function Field({ label, children }) {
   const ctx = useContext(NumberingCtx);
-  let shownLabel = label;
-  if (ctx?.show) {
-    const n = (ctx.ref.current = (ctx.ref.current || 0) + 1);
-    shownLabel = `${n}. ${label}`;
-  }
-
+  const n = ctx.show ? ++ctx.ref.current : null;
   return (
     <label className="small" style={{display:'grid', gap:6, minWidth:0}}>
-      <span>{shownLabel}</span>
+      <span>
+        {ctx.show ? `[${n}] ` : ''}{label}
+      </span>
       <div style={{display:'grid', minWidth:0}}>
         {children}
       </div>
