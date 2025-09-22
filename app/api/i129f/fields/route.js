@@ -1,23 +1,27 @@
 // app/api/i129f/fields/route.js
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
-import path from 'node:path';
-import fs from 'node:fs/promises';
-import { PDFDocument } from 'pdf-lib';
+import { readFile } from 'fs/promises';
+import path from 'path';
 
 export async function GET() {
   try {
-    const pdfPath = path.join(process.cwd(), 'public', 'i-129f.pdf');
-    const pdfBytes = await fs.readFile(pdfPath);
-    const pdfDoc = await PDFDocument.load(pdfBytes);
+    // === Adjust this if your PDF lives somewhere else ===
+    const PDF_PATH = path.join(process.cwd(), 'public', 'i-129f.pdf');
 
-    const form = pdfDoc.getForm();
-    const fields = form.getFields().map((f, i) => ({
-      idx: i + 1,
-      name: f.getName(),
-      type: f.constructor.name,
-    }));
+    // Load PDF with pdf-lib (same lib your PDF route uses)
+    const { PDFDocument } = await import('pdf-lib');
+    const bytes = await readFile(PDF_PATH);
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const form = pdf.getForm();
+
+    const fields = form.getFields().map(f => {
+      const type = f.constructor?.name || 'Unknown';
+      const name = f.getName?.() || 'Unknown';
+      return { name, type };
+    });
 
     return NextResponse.json({ ok: true, count: fields.length, fields });
   } catch (e) {
