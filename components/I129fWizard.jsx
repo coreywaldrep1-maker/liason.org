@@ -1,7 +1,7 @@
 // components/I129fWizard.jsx
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, createContext, useContext } from 'react';
 
 /* ----------------------------------------
    Sections (tab labels)
@@ -37,7 +37,7 @@ const EMPTY = {
       { lastName:'', firstName:'', middleName:'', dob:'', cityBirth:'', countryBirth:'', nationality:'', sex:'' },
     ],
     natzNumber:'', natzPlace:'', natzDate:'',
-    sex:'', maritalStatus:'', provinceBirth:'', // optional petitioner “other info”
+    sex:'', maritalStatus:'', provinceBirth:'', dob:'', cityBirth:'', countryBirth:'',
   },
 
   mailing: {
@@ -83,13 +83,11 @@ const EMPTY = {
     line3d:'', line4d:'', line5d:'', line6d:'', line7d:''
   },
 
-  // Power override for any exact AcroForm field names → value
   other: {},
 
-  // K-classification + I-130 (optional UI block you added earlier)
   classification: {
-    type: '', // 'k1' | 'k3' | ''
-    i130Filed: '', // 'yes' | 'no' | ''
+    type: '',       // 'k1' | 'k3' | ''
+    i130Filed: '',  // 'yes' | 'no' | ''
   },
 };
 
@@ -122,8 +120,7 @@ function setPath(obj, path, value) {
 }
 
 /* ----------------------------------------
-   Date helpers: keep MM/DD/YYYY in state,
-   show <input type="date"> (YYYY-MM-DD) in UI
+   Date helpers
 ---------------------------------------- */
 function isoToUs(iso) {
   if (!iso) return '';
@@ -169,7 +166,7 @@ function DateInput({ value, onChange }) {
 }
 
 /* ----------------------------------------
-   Select helpers
+   Small selects
 ---------------------------------------- */
 function UnitTypeSelect({ value, onChange }) {
   return (
@@ -183,12 +180,33 @@ function UnitTypeSelect({ value, onChange }) {
 }
 
 /* ----------------------------------------
+   Numbering context (for ?num=1)
+---------------------------------------- */
+const NumCtx = createContext({ show: false, next: () => null });
+
+/* ----------------------------------------
    Wizard
 ---------------------------------------- */
 export default function I129fWizard() {
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(EMPTY);
+
+  // showNumbers via ?num=1|true|yes
+  const [showNumbers, setShowNumbers] = useState(false);
+  useEffect(() => {
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      const raw = (qs.get('num') || '').toLowerCase();
+      setShowNumbers(raw === '1' || raw === 'true' || raw === 'yes');
+    } catch {}
+  }, []);
+  const counterRef = useRef(0);
+  useEffect(() => { counterRef.current = 0; }, [step, showNumbers]);
+  const numApi = useMemo(() => ({
+    show: showNumbers,
+    next: () => (++counterRef.current)
+  }), [showNumbers]);
 
   // load
   useEffect(() => {
@@ -201,7 +219,6 @@ export default function I129fWizard() {
           const merged = structuredClone(EMPTY);
           Object.assign(merged, j.data);
 
-          // ✅ fixed spread typo here
           merged.petitioner  = { ...EMPTY.petitioner,  ...(j.data.petitioner  || {}) };
           merged.mailing     = { ...EMPTY.mailing,     ...(j.data.mailing     || {}) };
           merged.beneficiary = { ...EMPTY.beneficiary, ...(j.data.beneficiary || {}) };
@@ -251,7 +268,6 @@ export default function I129fWizard() {
     });
   }
 
-  // spill extras (>2 entries) into Part 8 automatically on save
   function spillExtrasIntoPart8(n) {
     const extras = [];
 
@@ -285,7 +301,6 @@ export default function I129fWizard() {
     try {
       const normalized = structuredClone(form);
 
-      // normalize date strings to MM/DD/YYYY consistently
       const datePaths = [
         'petitioner.natzDate',
         'beneficiary.dob',
@@ -316,7 +331,6 @@ export default function I129fWizard() {
         if (e?.to)   setPath(normalized, `beneficiary.employment.${i}.to`, normalizeUs(e.to));
       });
 
-      // spill extras (>2) into Part 8 automatically
       spillExtrasIntoPart8(normalized);
 
       const resp = await fetch('/api/i129f/save', {
@@ -363,62 +377,64 @@ export default function I129fWizard() {
   );
 
   return (
-    <div className="card" style={{display:'grid', gap:12}}>
-      {Tabs}
+    <NumCtx.Provider value={numApi}>
+      <div className="card" style={{display:'grid', gap:12}}>
+        {Tabs}
 
-      {step===0 && <Part1Identity form={form} update={update} add={add} remove={remove} />}
-      {step===1 && <Part1Addresses form={form} update={update} add={add} remove={remove} onCopyMailing={()=>{
-        const m = form.mailing||{};
-        const copy = {
-          street:m.street, unitType:m.unitType, unitNum:m.unitNum, city:m.city, state:m.state,
-          zip:m.zip, province:m.province, postal:m.postal, country:m.country, from:'', to:'',
-        };
-        setForm(prev=>{
-          const next = structuredClone(prev);
-          if (!Array.isArray(next.physicalAddresses)) next.physicalAddresses = [];
-          next.physicalAddresses[0] = next.physicalAddresses[0] || {};
-          Object.assign(next.physicalAddresses[0], copy);
-          return next;
-        });
-      }} />}
-      {step===2 && <Part1Employment form={form} update={update} add={add} remove={remove} />}
-      {step===3 && <Part1ParentsNatz form={form} update={update} />}
+        {step===0 && <Part1Identity form={form} update={update} add={add} remove={remove} />}
+        {step===1 && <Part1Addresses form={form} update={update} add={add} remove={remove} onCopyMailing={()=>{
+          const m = form.mailing||{};
+          const copy = {
+            street:m.street, unitType:m.unitType, unitNum:m.unitNum, city:m.city, state:m.state,
+            zip:m.zip, province:m.province, postal:m.postal, country:m.country, from:'', to:'',
+          };
+          setForm(prev=>{
+            const next = structuredClone(prev);
+            if (!Array.isArray(next.physicalAddresses)) next.physicalAddresses = [];
+            next.physicalAddresses[0] = next.physicalAddresses[0] || {};
+            Object.assign(next.physicalAddresses[0], copy);
+            return next;
+          });
+        }} />}
+        {step===2 && <Part1Employment form={form} update={update} add={add} remove={remove} />}
+        {step===3 && <Part1ParentsNatz form={form} update={update} />}
 
-      {step===4 && <Part2Identity form={form} update={update} add={add} remove={remove} />}
-      {step===5 && <Part2Addresses form={form} update={update} />}
-      {step===6 && <Part2Employment form={form} update={update} />}
-      {step===7 && <Part2Parents form={form} update={update} />}
+        {step===4 && <Part2Identity form={form} update={update} add={add} remove={remove} />}
+        {step===5 && <Part2Addresses form={form} update={update} />}
+        {step===6 && <Part2Employment form={form} update={update} />}
+        {step===7 && <Part2Parents form={form} update={update} />}
 
-      {step===8 && <Parts5to7 form={form} update={update} />}
-      {step===9 && <Part8Additional form={form} update={update} add={add} remove={remove} />}
+        {step===8 && <Parts5to7 form={form} update={update} />}
+        {step===9 && <Part8Additional form={form} update={update} add={add} remove={remove} />}
 
-      {step===10 && (
-        <section style={{display:'grid', gap:10}}>
-          <h3 style={{margin:0}}>Review & download</h3>
-          <p className="small">
-            Use <a href="/api/i129f/pdf-debug" target="_blank" rel="noreferrer">PDF debug overlay</a>.
-          </p>
-          <div>
-            <a className="btn btn-primary" href="/api/i129f/pdf">Download I-129F (PDF)</a>
+        {step===10 && (
+          <section style={{display:'grid', gap:10}}>
+            <h3 style={{margin:0}}>Review & download</h3>
+            <p className="small">
+              Use <a href="/api/i129f/pdf-debug" target="_blank" rel="noreferrer">PDF debug overlay</a>.
+            </p>
+            <div>
+              <a className="btn btn-primary" href="/api/i129f/pdf">Download I-129F (PDF)</a>
+            </div>
+          </section>
+        )}
+
+        <div style={{display:'flex', gap:8, justifyContent:'space-between', marginTop:8}}>
+          <div style={{display:'flex', gap:8}}>
+            <button type="button" onClick={back} className="btn" disabled={step===0}>Back</button>
+            <button type="button" onClick={next} className="btn" disabled={step===SECTIONS.length-1}>Next</button>
           </div>
-        </section>
-      )}
-
-      <div style={{display:'flex', gap:8, justifyContent:'space-between', marginTop:8}}>
-        <div style={{display:'flex', gap:8}}>
-          <button type="button" onClick={back} className="btn" disabled={step===0}>Back</button>
-          <button type="button" onClick={next} className="btn" disabled={step===SECTIONS.length-1}>Next</button>
+          <button type="button" onClick={save} className="btn btn-primary" disabled={busy}>
+            {busy ? 'Saving…' : 'Save progress'}
+          </button>
         </div>
-        <button type="button" onClick={save} className="btn btn-primary" disabled={busy}>
-          {busy ? 'Saving…' : 'Save progress'}
-        </button>
       </div>
-    </div>
+    </NumCtx.Provider>
   );
 }
 
 /* ----------------------------------------
-   Sections (safe: no direct .parents[idx].xxx)
+   Sections
 ---------------------------------------- */
 
 function Part1Identity({ form, update, add, remove }) {
@@ -524,7 +540,7 @@ function Part1Identity({ form, update, add, remove }) {
         </div>
       ))}
 
-      {/* Optional petitioner “other information” used by PDF mapping */}
+      {/* Optional petitioner “other information” */}
       <div className="card" style={{display:'grid', gap:10}}>
         <div className="small"><strong>Other petitioner information</strong></div>
         <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
@@ -1244,7 +1260,6 @@ function Part8Additional({ form, update, add, remove }) {
           <textarea rows={3} value={form.part8?.line3d||''} onChange={e=>update('part8.line3d', e.target.value)} />
         </Field>
         <Field label="Line 4d — Additional info">
-          {/* ✅ fixed typo: e.target.value (not e.target value) */}
           <textarea rows={3} value={form.part8?.line4d||''} onChange={e=>update('part8.line4d', e.target.value)} />
         </Field>
         <Field label="Line 5d — Additional info">
@@ -1279,12 +1294,14 @@ function Part8Additional({ form, update, add, remove }) {
 }
 
 /* ----------------------------------------
-   Field wrapper
+   Field wrapper (numbers only when ?num=1)
 ---------------------------------------- */
 function Field({ label, children }) {
+  const { show, next } = useContext(NumCtx);
+  const prefix = show ? `${next()}. ` : '';
   return (
     <label className="small" style={{display:'grid', gap:6, minWidth:0}}>
-      <span>{label}</span>
+      <span>{prefix}{label}</span>
       <div style={{display:'grid', minWidth:0}}>
         {children}
       </div>
