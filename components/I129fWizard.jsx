@@ -12,10 +12,13 @@ const SECTIONS = [
   { key: 'p1_emp',   label: 'Part 1 — Employment' },
   { key: 'p1_par',   label: 'Part 1 — Parents & Naturalization' },
 
-  { key: 'p2_ident', label: 'Part 2 — Beneficiary (Identity)' },
+  { key: 'p2_ident', label: 'Part 2 — Beneficiary (Identity & Status)' },
   { key: 'p2_addr',  label: 'Part 2 — Addresses' },
   { key: 'p2_emp',   label: 'Part 2 — Employment' },
   { key: 'p2_par',   label: 'Part 2 — Parents' },
+
+  { key: 'p3_rel',   label: 'Part 3 — Relationship & IMBRA' },
+  { key: 'p4_bio',   label: 'Part 4 — Biographic Info' },
 
   { key: 'p5_7',     label: 'Parts 5–7 — Contact / Interpreter / Preparer' },
   { key: 'p8',       label: 'Part 8 — Additional Info' },
@@ -57,7 +60,7 @@ const EMPTY = {
 
   beneficiary: {
     lastName:'', firstName:'', middleName:'',
-    aNumber:'', ssn:'', dob:'', cityBirth:'', countryBirth:'', nationality:'',
+    aNumber:'', ssn:'', dob:'', cityBirth:'', countryBirth:'', nationality:'', sex:'',
     otherNames: [ { lastName:'', firstName:'', middleName:'' }, { lastName:'', firstName:'', middleName:'' } ],
     mailing: { inCareOf:'', street:'', unitType:'', unitNum:'', city:'', state:'', zip:'', province:'', postal:'', country:'' },
     physicalAddress: { street:'', unitType:'', unitNum:'', city:'', state:'', zip:'', province:'', postal:'', country:'' },
@@ -69,22 +72,52 @@ const EMPTY = {
       { lastName:'', firstName:'', middleName:'', dob:'', cityBirth:'', countryBirth:'', nationality:'', sex:'' },
       { lastName:'', firstName:'', middleName:'', dob:'', cityBirth:'', countryBirth:'', nationality:'', sex:'' },
     ],
+    // Status in U.S.
+    inUS:false, classOfAdmission:'', i94:'', statusExpires:'', arrivalDate:'',
+    passportNumber:'', travelDocNumber:'', passportCountry:'', passportExpiration:'',
+  },
+
+  // Part 3 — Relationship & IMBRA / criminal
+  part3: {
+    metInPerson:'', // 'yes' | 'no'
+    usedIMB:'',     // 'yes' | 'no'
+  },
+
+  criminal: {
+    domesticViolence:false,
+    sexualOffense:false,
+    childAbuse:false,
+    stalking:false,
+    controlledSubstances:false,
+    alcoholOffense:false,
+    prostitution:false,
+    humanTrafficking:false,
+    restrainingOrder:false,
+    other:false,
+    explain:'',
+  },
+
+  // Part 4 — Biographic Information (petitioner)
+  biographic: {
+    ethnicity:'',           // 'hispanic' | 'not-hispanic'
+    race:[],                // array of strings
+    heightFeet:'', heightInches:'', weight:'',
+    eyeColor:'',            // 'black'|'blue'|'brown'|'gray'|'green'|'hazel'|'maroon'|'pink'|'unknown'
+    hairColor:'',           // 'bald'|'black'|'blond'|'brown'|'gray'|'red'|'sandy'|'white'|'unknown'
   },
 
   interpreter: {
+    used:false,
     language:'', email:'', signDate:'', lastName:'', firstName:'', business:'', phone1:'', phone2:''
   },
 
   preparer: {
+    used:false,
     lastName:'', firstName:'', business:'', phone:'', mobile:'', email:'', signDate:''
   },
 
-  /* NEW: these feed Parts 3 & 4 mapping */
-  part3: { metInPerson: '' },
-  biographic: { ethnicity:'', race:'', heightFeet:'', heightInches:'', weight:'', eyeColor:'', hairColor:'' },
-
   part8: {
-    line3d:'', line4d:'', line5d:'', line6d:'', line7d:''
+    line3d:'', line4d:'', line5d:'', line6d:''
   },
 
   other: {},
@@ -120,7 +153,12 @@ function setPath(obj, path, value) {
     }
     cur = cur[p];
   }
-  cur[last] = value;
+  if (value === undefined) {
+    // delete key when explicitly passing undefined (used for removing "other" overrides)
+    try { delete cur[last]; } catch {}
+  } else {
+    cur[last] = value;
+  }
 }
 
 /* ----------------------------------------
@@ -221,19 +259,21 @@ export default function I129fWizard() {
         const j = await r.json();
         if (j?.ok && j.data) {
           const merged = structuredClone(EMPTY);
+          // Shallow merge top-level
           Object.assign(merged, j.data);
 
+          // Merge known sub-objects with defaults
           merged.petitioner  = { ...EMPTY.petitioner,  ...(j.data.petitioner  || {}) };
           merged.mailing     = { ...EMPTY.mailing,     ...(j.data.mailing     || {}) };
           merged.beneficiary = { ...EMPTY.beneficiary, ...(j.data.beneficiary || {}) };
-
-          /* NEW: keep safe defaults even if missing */
           merged.part3       = { ...EMPTY.part3,       ...(j.data.part3       || {}) };
-          merged.biographic  = { ...EMPTY.biographic,  ...(j.data.biographic  || j.data.part4 || {}) };
-
+          merged.criminal    = { ...EMPTY.criminal,    ...(j.data.criminal    || {}) };
+          merged.biographic  = { ...EMPTY.biographic,  ...(j.data.biographic  || {}) };
           merged.part8       = { ...EMPTY.part8,       ...(j.data.part8       || {}) };
           merged.other       = {                        ...(j.data.other       || {}) };
           merged.classification = { ...EMPTY.classification, ...(j.data.classification || {}) };
+          merged.interpreter = { ...EMPTY.interpreter, ...(j.data.interpreter || {}) };
+          merged.preparer    = { ...EMPTY.preparer,    ...(j.data.preparer    || {}) };
 
           merged.physicalAddresses =
             Array.isArray(j.data.physicalAddresses) && j.data.physicalAddresses.length
@@ -296,6 +336,24 @@ export default function I129fWizard() {
       extras.push(lines.join(' | '));
     }
 
+    // Also append a one-line summary of checked criminal items if explain is empty
+    const c = n.criminal || {};
+    const checked = [
+      c.domesticViolence && 'Domestic violence',
+      c.sexualOffense && 'Sexual offense',
+      c.childAbuse && 'Child abuse',
+      c.stalking && 'Stalking',
+      c.controlledSubstances && 'Controlled substances',
+      c.alcoholOffense && 'Alcohol offense',
+      c.prostitution && 'Prostitution/solicitation',
+      c.humanTrafficking && 'Human trafficking',
+      c.restrainingOrder && 'Restraining/protection order',
+      c.other && 'Other listed offense(s)',
+    ].filter(Boolean);
+    if (checked.length && !String(c.explain||'').trim()) {
+      extras.push(`Criminal/IMBRA checked: ${checked.join(', ')}`);
+    }
+
     const joined = extras.join(' || ');
     if (joined) {
       const cur = (n.part8?.line3d || '').trim();
@@ -313,6 +371,9 @@ export default function I129fWizard() {
       const datePaths = [
         'petitioner.natzDate',
         'beneficiary.dob',
+        'beneficiary.statusExpires',
+        'beneficiary.arrivalDate',
+        'beneficiary.passportExpiration',
         'preparer.signDate',
         'interpreter.signDate',
       ];
@@ -413,17 +474,20 @@ export default function I129fWizard() {
         {step===6 && <Part2Employment form={form} update={update} />}
         {step===7 && <Part2Parents form={form} update={update} />}
 
-        {step===8 && <Parts5to7 form={form} update={update} />}
-        {step===9 && <Part8Additional form={form} update={update} add={add} remove={remove} />}
+        {step===8 && <Part3Relationship form={form} update={update} />}
+        {step===9 && <Part4Biographics form={form} update={update} />}
 
-        {step===10 && (
+        {step===10 && <Parts5to7 form={form} update={update} />}
+        {step===11 && <Part8Additional form={form} update={update} add={add} remove={remove} />}
+
+        {step===12 && (
           <section style={{display:'grid', gap:10}}>
             <h3 style={{margin:0}}>Review & download</h3>
             <p className="small">
               Use <a href="/api/i129f/pdf-debug" target="_blank" rel="noreferrer">PDF debug overlay</a>.
             </p>
             <div>
-              <a className="btn btn-primary" href="/api/i129f/pdf?flatten=1">Download I-129F (PDF)</a>
+              <a className="btn btn-primary" href="/api/i129f/pdf">Download I-129F (PDF)</a>
             </div>
           </section>
         )}
@@ -484,7 +548,7 @@ function Part1Identity({ form, update, add, remove }) {
       {/* Classification (compact) */}
       <div className="card" style={{display:'grid', gap:10}}>
         <div className="small"><strong>Select one classification for your beneficiary</strong></div>
-        <div style={{display:'flex', gap:20, alignItems:'center'}}>
+        <div style={{display:'flex', gap:20, alignItems:'center', flexWrap:'wrap'}}>
           <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
             <input
               type="radio"
@@ -504,7 +568,7 @@ function Part1Identity({ form, update, add, remove }) {
             K-3 (Spouse) visa
           </label>
           {(form.classification?.type||'') === 'k3' && (
-            <span className="small" style={{display:'flex', gap:10, alignItems:'center', marginLeft:10}}>
+            <span className="small" style={{display:'flex', gap:10, alignItems:'center', marginLeft:10, flexWrap:'wrap'}}>
               <span>Have you filed Form I-130?</span>
               <label style={{display:'flex', gap:6, alignItems:'center'}}>
                 <input
@@ -642,7 +706,7 @@ function Part1Addresses({ form, update, add, remove, onCopyMailing }) {
         Mailing address is the same as current physical address
       </label>
 
-      <div className="small" style={{marginTop:8}}><strong>Physical Address History (Lines 9–10 & 14)</strong></div>
+      <div className="small" style={{marginTop:8}}><strong>Physical Address History (Lines 9–12)</strong></div>
       {list.map((a, i) => {
         const ai = a || {};
         return (
@@ -813,7 +877,6 @@ function Part1ParentsNatz({ form, update }) {
 
       <div className="card" style={{display:'grid', gap:10}}>
         <div className="small"><strong>Parent #2</strong></div>
-        {/* same blocks as parent #1 */}
         <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
           <Field label="Family">
             <input value={p1.lastName||''} onChange={e=>update('petitioner.parents.1.lastName', e.target.value)} />
@@ -874,7 +937,7 @@ function Part2Identity({ form, update, add, remove }) {
   const onAddOther = () => add('beneficiary.otherNames', () => ({ lastName:'', firstName:'', middleName:'' }));
   return (
     <section style={{display:'grid', gap:12}}>
-      <h3 style={{margin:0}}>Part 2 — Beneficiary (Identity)</h3>
+      <h3 style={{margin:0}}>Part 2 — Beneficiary (Identity & Status)</h3>
       <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
         <Field label="Family name (last)">
           <input value={b.lastName||''} onChange={e=>update('beneficiary.lastName', e.target.value)} />
@@ -909,6 +972,7 @@ function Part2Identity({ form, update, add, remove }) {
         </Field>
       </div>
 
+      {/* Other names */}
       <div className="small" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <strong>Other Names Used</strong>
         <button type="button" className="btn" onClick={onAddOther}>+ Add other name</button>
@@ -927,6 +991,58 @@ function Part2Identity({ form, update, add, remove }) {
           <button type="button" className="btn" onClick={()=>remove('beneficiary.otherNames', i)}>Remove</button>
         </div>
       ))}
+
+      {/* In U.S.? status group */}
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Is the beneficiary currently in the United States?</strong></div>
+        <div style={{display:'flex', gap:16, alignItems:'center', flexWrap:'wrap'}}>
+          <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
+            <input type="radio" name="ben_inus" checked={!!b.inUS===true} onChange={()=>update('beneficiary.inUS', true)} />
+            Yes
+          </label>
+          <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
+            <input type="radio" name="ben_inus" checked={!!b.inUS===false} onChange={()=>update('beneficiary.inUS', false)} />
+            No
+          </label>
+        </div>
+
+        {b.inUS ? (
+          <>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10}}>
+              <Field label="Class of Admission">
+                <input value={b.classOfAdmission||''} onChange={e=>update('beneficiary.classOfAdmission', e.target.value)} />
+              </Field>
+              <Field label="I-94 Number">
+                <input value={b.i94||''} onChange={e=>update('beneficiary.i94', e.target.value)} />
+              </Field>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+              <Field label="Status expiration">
+                <DateInput value={b.statusExpires||''} onChange={v=>update('beneficiary.statusExpires', v)} />
+              </Field>
+              <Field label="Date of arrival">
+                <DateInput value={b.arrivalDate||''} onChange={v=>update('beneficiary.arrivalDate', v)} />
+              </Field>
+              <div />
+            </div>
+            <div className="small"><strong>Passport / Travel Document</strong></div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10}}>
+              <Field label="Passport #">
+                <input value={b.passportNumber||''} onChange={e=>update('beneficiary.passportNumber', e.target.value)} />
+              </Field>
+              <Field label="Travel Doc # (if any)">
+                <input value={b.travelDocNumber||''} onChange={e=>update('beneficiary.travelDocNumber', e.target.value)} />
+              </Field>
+              <Field label="Country of issuance">
+                <input value={b.passportCountry||''} onChange={e=>update('beneficiary.passportCountry', e.target.value)} />
+              </Field>
+              <Field label="Expiration">
+                <DateInput value={b.passportExpiration||''} onChange={v=>update('beneficiary.passportExpiration', v)} />
+              </Field>
+            </div>
+          </>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -1161,7 +1277,152 @@ function Part2Parents({ form, update }) {
   );
 }
 
+function Part3Relationship({ form, update }) {
+  const c = form.criminal || {};
+  const p3 = form.part3 || {};
+  return (
+    <section style={{display:'grid', gap:12}}>
+      <h3 style={{margin:0}}>Part 3 — Relationship Evidence & IMBRA</h3>
+
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Met in person within 2 years prior to filing?</strong></div>
+        <div style={{display:'flex', gap:16, alignItems:'center', flexWrap:'wrap'}}>
+          <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
+            <input type="radio" name="met" checked={(p3.metInPerson||'')==='yes'} onChange={()=>update('part3.metInPerson','yes')} />
+            Yes
+          </label>
+          <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
+            <input type="radio" name="met" checked={(p3.metInPerson||'')==='no'} onChange={()=>update('part3.metInPerson','no')} />
+            No
+          </label>
+        </div>
+      </div>
+
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Did you use an International Marriage Broker (IMB)?</strong></div>
+        <div style={{display:'flex', gap:16, alignItems:'center', flexWrap:'wrap'}}>
+          <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
+            <input type="radio" name="imb" checked={(p3.usedIMB||'')==='yes'} onChange={()=>update('part3.usedIMB','yes')} />
+            Yes
+          </label>
+          <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
+            <input type="radio" name="imb" checked={(p3.usedIMB||'')==='no'} onChange={()=>update('part3.usedIMB','no')} />
+            No
+          </label>
+        </div>
+      </div>
+
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Criminal/IMBRA Disclosures (check all that apply)</strong></div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8}}>
+          <Check label="Domestic violence"    value={!!c.domesticViolence}   onChange={v=>update('criminal.domesticViolence', v)} />
+          <Check label="Sexual offense"       value={!!c.sexualOffense}      onChange={v=>update('criminal.sexualOffense', v)} />
+          <Check label="Child abuse"          value={!!c.childAbuse}         onChange={v=>update('criminal.childAbuse', v)} />
+          <Check label="Stalking"             value={!!c.stalking}           onChange={v=>update('criminal.stalking', v)} />
+          <Check label="Controlled substances" value={!!c.controlledSubstances} onChange={v=>update('criminal.controlledSubstances', v)} />
+          <Check label="Alcohol offense (DUI/DWI)" value={!!c.alcoholOffense} onChange={v=>update('criminal.alcoholOffense', v)} />
+          <Check label="Prostitution/solicitation" value={!!c.prostitution}   onChange={v=>update('criminal.prostitution', v)} />
+          <Check label="Human trafficking"    value={!!c.humanTrafficking}   onChange={v=>update('criminal.humanTrafficking', v)} />
+          <Check label="Restraining/protection order" value={!!c.restrainingOrder} onChange={v=>update('criminal.restrainingOrder', v)} />
+          <Check label="Other listed offense(s)" value={!!c.other} onChange={v=>update('criminal.other', v)} />
+        </div>
+        <Field label="Explain (offense, date, disposition). If you check any box, add details here.">
+          <textarea rows={3} value={c.explain||''} onChange={e=>update('criminal.explain', e.target.value)} />
+        </Field>
+        <div className="small">Tip: if you skip details here, selected items will auto-summarize to Part 8 when you Save.</div>
+      </div>
+    </section>
+  );
+}
+
+function Part4Biographics({ form, update }) {
+  const b = form.biographic || {};
+  const race = Array.isArray(b.race) ? b.race : [];
+  const toggleRace = (val) => {
+    const has = race.includes(val);
+    const next = has ? race.filter(x=>x!==val) : [...race, val];
+    update('biographic.race', next);
+  };
+  return (
+    <section style={{display:'grid', gap:12}}>
+      <h3 style={{margin:0}}>Part 4 — Biographic Information (Petitioner)</h3>
+
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Ethnicity</strong></div>
+        <div style={{display:'flex', gap:16, alignItems:'center', flexWrap:'wrap'}}>
+          <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
+            <input type="radio" name="eth" checked={(b.ethnicity||'')==='hispanic'} onChange={()=>update('biographic.ethnicity','hispanic')} />
+            Hispanic or Latino
+          </label>
+          <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
+            <input type="radio" name="eth" checked={(b.ethnicity||'')==='not-hispanic'} onChange={()=>update('biographic.ethnicity','not-hispanic')} />
+            Not Hispanic or Latino
+          </label>
+        </div>
+      </div>
+
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Race (check all that apply)</strong></div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8}}>
+          <Check label="White"             value={race.includes('white')} onChange={()=>toggleRace('white')} />
+          <Check label="Black/African Am." value={race.includes('black')} onChange={()=>toggleRace('black')} />
+          <Check label="Asian"             value={race.includes('asian')} onChange={()=>toggleRace('asian')} />
+          <Check label="American Indian/Alaska Native" value={race.includes('aian')} onChange={()=>toggleRace('aian')} />
+          <Check label="Native Hawaiian/Pacific Islander" value={race.includes('nhpi')} onChange={()=>toggleRace('nhpi')} />
+        </div>
+      </div>
+
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Physical characteristics</strong></div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+          <Field label="Height — feet">
+            <input value={b.heightFeet||''} onChange={e=>update('biographic.heightFeet', e.target.value)} />
+          </Field>
+          <Field label="Height — inches">
+            <input value={b.heightInches||''} onChange={e=>update('biographic.heightInches', e.target.value)} />
+          </Field>
+          <Field label="Weight (lbs)">
+            <input value={b.weight||''} onChange={e=>update('biographic.weight', e.target.value)} />
+          </Field>
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10}}>
+          <Field label="Eye color">
+            <select value={b.eyeColor||''} onChange={e=>update('biographic.eyeColor', e.target.value)}>
+              <option value=""></option>
+              <option value="black">Black</option>
+              <option value="blue">Blue</option>
+              <option value="brown">Brown</option>
+              <option value="gray">Gray</option>
+              <option value="green">Green</option>
+              <option value="hazel">Hazel</option>
+              <option value="maroon">Maroon</option>
+              <option value="pink">Pink</option>
+              <option value="unknown">Unknown/Other</option>
+            </select>
+          </Field>
+          <Field label="Hair color">
+            <select value={b.hairColor||''} onChange={e=>update('biographic.hairColor', e.target.value)}>
+              <option value=""></option>
+              <option value="bald">Bald/None</option>
+              <option value="black">Black</option>
+              <option value="blond">Blond/Blonde</option>
+              <option value="brown">Brown</option>
+              <option value="gray">Gray/Grey</option>
+              <option value="red">Red</option>
+              <option value="sandy">Sandy</option>
+              <option value="white">White</option>
+              <option value="unknown">Unknown/Other</option>
+            </select>
+          </Field>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Parts5to7({ form, update }) {
+  const itp = form.interpreter || {};
+  const prep = form.preparer || {};
   return (
     <section style={{display:'grid', gap:12}}>
       <h3 style={{margin:0}}>Parts 5–7 — Contact / Interpreter / Preparer</h3>
@@ -1181,179 +1442,89 @@ function Parts5to7({ form, update }) {
         </div>
       </div>
 
-      {/* ---- Part 3 — Other Information ---- */}
+      {/* Interpreter */}
       <div className="card" style={{display:'grid', gap:10}}>
-        <div className="small"><strong>Part 3 — Other Information</strong></div>
-        <label className="small" style={{display:'flex', gap:12, alignItems:'center'}}>
-          <span>Have you and your fiancé(e)/spouse met in person within the last 2 years?</span>
-          <label style={{display:'flex', gap:6, alignItems:'center'}}>
-            <input
-              type="radio"
-              name="metInPerson"
-              checked={(form.part3?.metInPerson||'') === 'yes'}
-              onChange={()=>update('part3.metInPerson','yes')}
-            />
-            Yes
+        <div className="small" style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap'}}>
+          <strong>Interpreter (if used)</strong>
+          <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
+            <input type="checkbox" checked={!!itp.used} onChange={e=>update('interpreter.used', e.target.checked)} />
+            I used an interpreter
           </label>
-          <label style={{display:'flex', gap:6, alignItems:'center'}}>
-            <input
-              type="radio"
-              name="metInPerson"
-              checked={(form.part3?.metInPerson||'') === 'no'}
-              onChange={()=>update('part3.metInPerson','no')}
-            />
-            No
+        </div>
+        {itp.used ? (
+          <>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+              <Field label="Language">
+                <input value={itp.language||''} onChange={e=>update('interpreter.language', e.target.value)} />
+              </Field>
+              <Field label="Email">
+                <input value={itp.email||''} onChange={e=>update('interpreter.email', e.target.value)} />
+              </Field>
+              <Field label="Date of signature">
+                <DateInput value={itp.signDate||''} onChange={v=>update('interpreter.signDate', v)} />
+              </Field>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+              <Field label="Family name">
+                <input value={itp.lastName||''} onChange={e=>update('interpreter.lastName', e.target.value)} />
+              </Field>
+              <Field label="Given name">
+                <input value={itp.firstName||''} onChange={e=>update('interpreter.firstName', e.target.value)} />
+              </Field>
+              <Field label="Business/Org">
+                <input value={itp.business||''} onChange={e=>update('interpreter.business', e.target.value)} />
+              </Field>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+              <Field label="Phone #1">
+                <input value={itp.phone1||''} onChange={e=>update('interpreter.phone1', e.target.value)} />
+              </Field>
+              <Field label="Phone #2">
+                <input value={itp.phone2||''} onChange={e=>update('interpreter.phone2', e.target.value)} />
+              </Field>
+            </div>
+          </>
+        ) : <div className="small">No interpreter used.</div>}
+      </div>
+
+      {/* Preparer */}
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small" style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap'}}>
+          <strong>Preparer (if used)</strong>
+          <label className="small" style={{display:'flex', gap:6, alignItems:'center'}}>
+            <input type="checkbox" checked={!!prep.used} onChange={e=>update('preparer.used', e.target.checked)} />
+            I used a preparer
           </label>
-        </label>
-      </div>
-
-      {/* ---- Part 4 — Biographic Information ---- */}
-      <div className="card" style={{display:'grid', gap:10}}>
-        <div className="small"><strong>Part 4 — Biographic Information</strong></div>
-
-        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
-          <Field label="Ethnicity">
-            <select
-              value={form.biographic?.ethnicity||''}
-              onChange={e=>update('biographic.ethnicity', e.target.value)}
-            >
-              <option value=""></option>
-              <option value="hispanic">Hispanic/Latino</option>
-              <option value="not_hispanic">Not Hispanic/Latino</option>
-            </select>
-          </Field>
-          <Field label="Race">
-            <select
-              value={form.biographic?.race||''}
-              onChange={e=>update('biographic.race', e.target.value)}
-            >
-              <option value=""></option>
-              <option value="white">White</option>
-              <option value="black">Black</option>
-              <option value="asian">Asian</option>
-              <option value="american indian / alaska native">American Indian / Alaska Native</option>
-              <option value="native hawaiian / pacific islander">Native Hawaiian / Pacific Islander</option>
-            </select>
-          </Field>
-          <Field label="Weight (lbs)">
-            <input
-              value={form.biographic?.weight||''}
-              onChange={e=>update('biographic.weight', e.target.value)}
-            />
-          </Field>
         </div>
-
-        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10}}>
-          <Field label="Height — Feet">
-            <input
-              value={form.biographic?.heightFeet||''}
-              onChange={e=>update('biographic.heightFeet', e.target.value)}
-            />
-          </Field>
-          <Field label="Height — Inches">
-            <input
-              value={form.biographic?.heightInches||''}
-              onChange={e=>update('biographic.heightInches', e.target.value)}
-            />
-          </Field>
-          <Field label="Eye Color">
-            <select
-              value={form.biographic?.eyeColor||''}
-              onChange={e=>update('biographic.eyeColor', e.target.value)}
-            >
-              <option value=""></option>
-              <option value="black">Black</option>
-              <option value="blue">Blue</option>
-              <option value="brown">Brown</option>
-              <option value="gray">Gray</option>
-              <option value="green">Green</option>
-              <option value="hazel">Hazel</option>
-              <option value="maroon">Maroon</option>
-              <option value="pink">Pink</option>
-              <option value="unknown">Unknown</option>
-            </select>
-          </Field>
-          <Field label="Hair Color">
-            <select
-              value={form.biographic?.hairColor||''}
-              onChange={e=>update('biographic.hairColor', e.target.value)}
-            >
-              <option value=""></option>
-              <option value="bald">Bald</option>
-              <option value="black">Black</option>
-              <option value="blond">Blond</option>
-              <option value="brown">Brown</option>
-              <option value="gray">Gray</option>
-              <option value="red">Red</option>
-              <option value="sandy">Sandy</option>
-              <option value="white">White</option>
-              <option value="unknown">Unknown</option>
-            </select>
-          </Field>
-        </div>
-      </div>
-
-      <div className="card" style={{display:'grid', gap:10}}>
-        <div className="small"><strong>Interpreter (if used)</strong></div>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
-          <Field label="Language">
-            <input value={form.interpreter?.language||''} onChange={e=>update('interpreter.language', e.target.value)} />
-          </Field>
-          <Field label="Email">
-            <input value={form.interpreter?.email||''} onChange={e=>update('interpreter.email', e.target.value)} />
-          </Field>
-          <Field label="Date of signature">
-            <DateInput value={form.interpreter?.signDate||''} onChange={v=>update('interpreter.signDate', v)} />
-          </Field>
-        </div>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
-          <Field label="Family name">
-            <input value={form.interpreter?.lastName||''} onChange={e=>update('interpreter.lastName', e.target.value)} />
-          </Field>
-          <Field label="Given name">
-            <input value={form.interpreter?.firstName||''} onChange={e=>update('interpreter.firstName', e.target.value)} />
-          </Field>
-          <Field label="Business/Org">
-            <input value={form.interpreter?.business||''} onChange={e=>update('interpreter.business', e.target.value)} />
-          </Field>
-        </div>
-        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
-          <Field label="Phone #1">
-            <input value={form.interpreter?.phone1||''} onChange={e=>update('interpreter.phone1', e.target.value)} />
-          </Field>
-          <Field label="Phone #2">
-            <input value={form.interpreter?.phone2||''} onChange={e=>update('interpreter.phone2', e.target.value)} />
-          </Field>
-        </div>
-      </div>
-
-      <div className="card" style={{display:'grid', gap:10}}>
-        <div className="small"><strong>Preparer (if used)</strong></div>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
-          <Field label="Family name">
-            <input value={form.preparer?.lastName||''} onChange={e=>update('preparer.lastName', e.target.value)} />
-          </Field>
-          <Field label="Given name">
-            <input value={form.preparer?.firstName||''} onChange={e=>update('preparer.firstName', e.target.value)} />
-          </Field>
-          <Field label="Business/Org">
-            <input value={form.preparer?.business||''} onChange={e=>update('preparer.business', e.target.value)} />
-          </Field>
-        </div>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
-          <Field label="Phone">
-            <input value={form.preparer?.phone||''} onChange={e=>update('preparer.phone', e.target.value)} />
-          </Field>
-          <Field label="Mobile">
-            <input value={form.preparer?.mobile||''} onChange={e=>update('preparer.mobile', e.target.value)} />
-          </Field>
-          <Field label="Email">
-            <input value={form.preparer?.email||''} onChange={e=>update('preparer.email', e.target.value)} />
-          </Field>
-        </div>
-        <Field label="Date of signature">
-          <DateInput value={form.preparer?.signDate||''} onChange={v=>update('preparer.signDate', v)} />
-        </Field>
+        {prep.used ? (
+          <>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+              <Field label="Family name">
+                <input value={prep.lastName||''} onChange={e=>update('preparer.lastName', e.target.value)} />
+              </Field>
+              <Field label="Given name">
+                <input value={prep.firstName||''} onChange={e=>update('preparer.firstName', e.target.value)} />
+              </Field>
+              <Field label="Business/Org">
+                <input value={prep.business||''} onChange={e=>update('preparer.business', e.target.value)} />
+              </Field>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+              <Field label="Phone">
+                <input value={prep.phone||''} onChange={e=>update('preparer.phone', e.target.value)} />
+              </Field>
+              <Field label="Mobile">
+                <input value={prep.mobile||''} onChange={e=>update('preparer.mobile', e.target.value)} />
+              </Field>
+              <Field label="Email">
+                <input value={prep.email||''} onChange={e=>update('preparer.email', e.target.value)} />
+              </Field>
+            </div>
+            <Field label="Date of signature">
+              <DateInput value={prep.signDate||''} onChange={v=>update('preparer.signDate', v)} />
+            </Field>
+          </>
+        ) : <div className="small">No preparer used.</div>}
       </div>
     </section>
   );
@@ -1412,6 +1583,18 @@ function Part8Additional({ form, update, add, remove }) {
         <div className="small">Tip: extras beyond two names/addresses auto-summarize into Part 8, Line 3d when you Save.</div>
       </div>
     </section>
+  );
+}
+
+/* ----------------------------------------
+   Small helpers
+---------------------------------------- */
+function Check({ label, value, onChange }) {
+  return (
+    <label className="small" style={{display:'flex', gap:8, alignItems:'center'}}>
+      <input type="checkbox" checked={!!value} onChange={e=>onChange(e.target.checked)} />
+      {label}
+    </label>
   );
 }
 
