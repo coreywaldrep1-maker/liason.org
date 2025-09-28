@@ -79,6 +79,10 @@ const EMPTY = {
     lastName:'', firstName:'', business:'', phone:'', mobile:'', email:'', signDate:''
   },
 
+  /* NEW: these feed Parts 3 & 4 mapping */
+  part3: { metInPerson: '' },
+  biographic: { ethnicity:'', race:'', heightFeet:'', heightInches:'', weight:'', eyeColor:'', hairColor:'' },
+
   part8: {
     line3d:'', line4d:'', line5d:'', line6d:'', line7d:''
   },
@@ -222,6 +226,11 @@ export default function I129fWizard() {
           merged.petitioner  = { ...EMPTY.petitioner,  ...(j.data.petitioner  || {}) };
           merged.mailing     = { ...EMPTY.mailing,     ...(j.data.mailing     || {}) };
           merged.beneficiary = { ...EMPTY.beneficiary, ...(j.data.beneficiary || {}) };
+
+          /* NEW: keep safe defaults even if missing */
+          merged.part3       = { ...EMPTY.part3,       ...(j.data.part3       || {}) };
+          merged.biographic  = { ...EMPTY.biographic,  ...(j.data.biographic  || j.data.part4 || {}) };
+
           merged.part8       = { ...EMPTY.part8,       ...(j.data.part8       || {}) };
           merged.other       = {                        ...(j.data.other       || {}) };
           merged.classification = { ...EMPTY.classification, ...(j.data.classification || {}) };
@@ -414,7 +423,7 @@ export default function I129fWizard() {
               Use <a href="/api/i129f/pdf-debug" target="_blank" rel="noreferrer">PDF debug overlay</a>.
             </p>
             <div>
-              <a className="btn btn-primary" href="/api/i129f/pdf">Download I-129F (PDF)</a>
+              <a className="btn btn-primary" href="/api/i129f/pdf?flatten=1">Download I-129F (PDF)</a>
             </div>
           </section>
         )}
@@ -804,6 +813,7 @@ function Part1ParentsNatz({ form, update }) {
 
       <div className="card" style={{display:'grid', gap:10}}>
         <div className="small"><strong>Parent #2</strong></div>
+        {/* same blocks as parent #1 */}
         <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
           <Field label="Family">
             <input value={p1.lastName||''} onChange={e=>update('petitioner.parents.1.lastName', e.target.value)} />
@@ -1167,6 +1177,118 @@ function Parts5to7({ form, update }) {
           </Field>
           <Field label="Email">
             <input value={form.petitioner?.email||''} onChange={e=>update('petitioner.email', e.target.value)} />
+          </Field>
+        </div>
+      </div>
+
+      {/* ---- Part 3 — Other Information ---- */}
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Part 3 — Other Information</strong></div>
+        <label className="small" style={{display:'flex', gap:12, alignItems:'center'}}>
+          <span>Have you and your fiancé(e)/spouse met in person within the last 2 years?</span>
+          <label style={{display:'flex', gap:6, alignItems:'center'}}>
+            <input
+              type="radio"
+              name="metInPerson"
+              checked={(form.part3?.metInPerson||'') === 'yes'}
+              onChange={()=>update('part3.metInPerson','yes')}
+            />
+            Yes
+          </label>
+          <label style={{display:'flex', gap:6, alignItems:'center'}}>
+            <input
+              type="radio"
+              name="metInPerson"
+              checked={(form.part3?.metInPerson||'') === 'no'}
+              onChange={()=>update('part3.metInPerson','no')}
+            />
+            No
+          </label>
+        </label>
+      </div>
+
+      {/* ---- Part 4 — Biographic Information ---- */}
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Part 4 — Biographic Information</strong></div>
+
+        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+          <Field label="Ethnicity">
+            <select
+              value={form.biographic?.ethnicity||''}
+              onChange={e=>update('biographic.ethnicity', e.target.value)}
+            >
+              <option value=""></option>
+              <option value="hispanic">Hispanic/Latino</option>
+              <option value="not_hispanic">Not Hispanic/Latino</option>
+            </select>
+          </Field>
+          <Field label="Race">
+            <select
+              value={form.biographic?.race||''}
+              onChange={e=>update('biographic.race', e.target.value)}
+            >
+              <option value=""></option>
+              <option value="white">White</option>
+              <option value="black">Black</option>
+              <option value="asian">Asian</option>
+              <option value="american indian / alaska native">American Indian / Alaska Native</option>
+              <option value="native hawaiian / pacific islander">Native Hawaiian / Pacific Islander</option>
+            </select>
+          </Field>
+          <Field label="Weight (lbs)">
+            <input
+              value={form.biographic?.weight||''}
+              onChange={e=>update('biographic.weight', e.target.value)}
+            />
+          </Field>
+        </div>
+
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10}}>
+          <Field label="Height — Feet">
+            <input
+              value={form.biographic?.heightFeet||''}
+              onChange={e=>update('biographic.heightFeet', e.target.value)}
+            />
+          </Field>
+          <Field label="Height — Inches">
+            <input
+              value={form.biographic?.heightInches||''}
+              onChange={e=>update('biographic.heightInches', e.target.value)}
+            />
+          </Field>
+          <Field label="Eye Color">
+            <select
+              value={form.biographic?.eyeColor||''}
+              onChange={e=>update('biographic.eyeColor', e.target.value)}
+            >
+              <option value=""></option>
+              <option value="black">Black</option>
+              <option value="blue">Blue</option>
+              <option value="brown">Brown</option>
+              <option value="gray">Gray</option>
+              <option value="green">Green</option>
+              <option value="hazel">Hazel</option>
+              <option value="maroon">Maroon</option>
+              <option value="pink">Pink</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </Field>
+          <Field label="Hair Color">
+            <select
+              value={form.biographic?.hairColor||''}
+              onChange={e=>update('biographic.hairColor', e.target.value)}
+            >
+              <option value=""></option>
+              <option value="bald">Bald</option>
+              <option value="black">Black</option>
+              <option value="blond">Blond</option>
+              <option value="brown">Brown</option>
+              <option value="gray">Gray</option>
+              <option value="red">Red</option>
+              <option value="sandy">Sandy</option>
+              <option value="white">White</option>
+              <option value="unknown">Unknown</option>
+            </select>
           </Field>
         </div>
       </div>
