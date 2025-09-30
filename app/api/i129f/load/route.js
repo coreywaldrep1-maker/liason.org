@@ -1,23 +1,27 @@
-// app/api/i129f/load/route.js
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 import { NextResponse } from 'next/server';
-import sql from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
 
+// GET /api/i129f/load?formId=...
 export async function GET(req) {
   try {
-    const user = await requireAuth(req);
-    const rows = await sql`
-      SELECT data FROM i129f_entries
-      WHERE user_id = ${user.id}
-      LIMIT 1
-    `;
-    if (!rows.length) return NextResponse.json({ ok: true, data: null });
-    return NextResponse.json({ ok: true, data: rows[0].data || null });
-  } catch (e) {
-    console.error('load error', e);
-    const msg = String(e.message || e);
-    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+    const { searchParams } = new URL(req.url);
+    const formId = searchParams.get('formId');
+
+    // TODO: load your saved form data from DB by formId/user
+    // const data = await db.i129f.findOne({ formId, userId });
+
+    return NextResponse.json({
+      ok: true,
+      formId,
+      data: {} // replace with real data
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: err?.message || 'Load failed' },
+      { status: 500 }
+    );
   }
 }
