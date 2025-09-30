@@ -2,122 +2,64 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import LanguageSwitcher from './LanguageSwitcher';
-import AccountClient from './AccountClient';
+import AccountClient from '@/components/AccountClient';
+import LanguageSwitcher from '@/components/LanguageSwitcher'; // assumes you already have this
+import { useState } from 'react';
 
 export default function HeaderBasic() {
-  const pathname = usePathname();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <header style={{
-      position:'sticky', top:0, zIndex:50, background:'#fff',
-      borderBottom:'1px solid #e5e7eb'
-    }}>
-      <div style={{
-        maxWidth: '1100px',
-        margin: '0 auto',
-        padding: '10px 16px',
-        display:'grid',
-        gridTemplateColumns:'auto auto 1fr auto',
-        gap:12,
-        alignItems:'center'
-      }}>
-        {/* Far left: menu dropdown */}
-        <DetailsMenu />
+    <header className="sticky top-0 z-40 w-full border-b bg-white">
+      <div className="mx-auto max-w-screen-2xl px-4">
+        <div className="flex h-14 items-center justify-between gap-3">
+          {/* Left: hamburger + language switcher */}
+          <div className="flex items-center gap-3">
+            <button
+              aria-label="Open menu"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-md border hover:bg-gray-50"
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              <span className="sr-only">Open menu</span>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5"/>
+              </svg>
+            </button>
 
-        {/* Right of menu: language switcher */}
-        <div style={{minWidth:120}}>
-          <LanguageSwitcher />
-        </div>
+            <div className="hidden sm:block">
+              <LanguageSwitcher />
+            </div>
+          </div>
 
-        {/* Center: logo + name */}
-        <div style={{textAlign:'center'}}>
-          <Link href="/" style={{textDecoration:'none', color:'inherit'}} data-no-translate="true" translate="no">
-            <div style={{fontWeight:700, fontSize:18, letterSpacing:0.2}}>liason</div>
+          {/* Center: logo + wordmark */}
+          <Link href="/" className="flex items-center gap-2">
+            <img src="/logo.svg" alt="Liason logo" className="h-6 w-6" />
+            <span className="font-semibold tracking-tight">Liason</span>
           </Link>
+
+          {/* Right: account */}
+          <div className="flex items-center gap-3">
+            <div className="sm:hidden">
+              <LanguageSwitcher />
+            </div>
+            <AccountClient />
+          </div>
         </div>
 
-        {/* Far right: login/logout/profile */}
-        <div style={{justifySelf:'end'}}>
-          <AccountClient />
-        </div>
+        {/* Simple dropdown menu panel */}
+        {menuOpen && (
+          <nav className="pb-3">
+            <ul className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+              <li><Link href="/visas/us" className="hover:underline">US Visas</Link></li>
+              <li><Link href="/checkout" className="hover:underline">Checkout</Link></li>
+              <li><Link href="/account" className="hover:underline">Account</Link></li>
+              <li><Link href="/policies" className="hover:underline">Policies</Link></li>
+            </ul>
+          </nav>
+        )}
       </div>
-
-      {/* Secondary nav */}
-      <nav style={{borderTop:'1px solid #f1f5f9'}}>
-        <div style={{
-          maxWidth:'1100px', margin:'0 auto', padding:'6px 16px',
-          display:'flex', gap:16, flexWrap:'wrap'
-        }}>
-          <NavLink href="/" active={pathname === '/'}>Home</NavLink>
-          <NavLink href="/flow/us/i-129f" active={pathname?.startsWith('/flow/us/i-129f')}>I-129F</NavLink>
-          <NavLink href="/checkout/us/i-129f" active={pathname?.startsWith('/checkout')}>Checkout</NavLink>
-          <NavLink href="/account" active={pathname?.startsWith('/account')}>Account</NavLink>
-        </div>
-      </nav>
     </header>
-  );
-}
-
-function NavLink({ href, active, children }) {
-  return (
-    <Link
-      href={href}
-      style={{
-        padding:'6px 10px',
-        borderRadius:8,
-        textDecoration:'none',
-        background: active ? '#eef2ff' : 'transparent',
-        color:'#111827'
-      }}
-      data-no-translate="true"
-      translate="no"
-    >
-      {children}
-    </Link>
-  );
-}
-
-function DetailsMenu() {
-  return (
-    <details style={{position:'relative'}}>
-      <summary
-        style={{
-          listStyle:'none', cursor:'pointer',
-          padding:'6px 10px', border:'1px solid #e5e7eb', borderRadius:8
-        }}
-        data-no-translate="true"
-        translate="no"
-      >
-        ☰ Menu
-      </summary>
-      <div
-        style={{
-          position:'absolute', top:'calc(100% + 6px)', left:0,
-          background:'#fff', border:'1px solid #e5e7eb', borderRadius:8,
-          minWidth:200, boxShadow:'0 8px 24px rgba(0,0,0,.08)', padding:8
-        }}
-      >
-        <MenuLink href="/">Home</MenuLink>
-        <MenuLink href="/flow/us/i-129f">I-129F Wizard</MenuLink>
-        <MenuLink href="/flow/us/i-129f/all-fields">All Fields (debug)</MenuLink>
-        <MenuLink href="/checkout/us/i-129f">Checkout</MenuLink>
-        <MenuLink href="/account">Account</MenuLink>
-      </div>
-    </details>
-  );
-}
-
-function MenuLink({ href, children }) {
-  return (
-    <Link
-      href={href}
-      style={{display:'block', padding:'8px 10px', borderRadius:6, textDecoration:'none', color:'#111827'}}
-      data-no-translate="true"
-      translate="no"
-    >
-      {children}
-    </Link>
   );
 }
