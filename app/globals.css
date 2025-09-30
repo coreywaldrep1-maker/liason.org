@@ -1,104 +1,293 @@
-/* --- Samsung-like light gradient background --- */
+/* ================================
+   Tailwind base + utilities
+   ================================ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ================================
+   Design tokens
+   ================================ */
+:root {
+  --bg: #ffffff;
+  --fg: #0f172a;             /* slate-900 */
+  --muted: #475569;          /* slate-600 */
+  --border: #e2e8f0;         /* slate-200 */
+  --ring: #4f46e5;           /* indigo-600 */
+  --soft: #f8fafc;           /* slate-50 */
+  --card: #ffffff;
+  --primary: #4f46e5;        /* indigo-600 */
+  --primary-foreground: #ffffff;
+  --radius: 12px;
+}
+
+/* ================================
+   Base document
+   ================================ */
 html, body {
-  background:
-    radial-gradient(900px 600px at 12% -18%, rgba(165,180,252,0.18), transparent 60%),
-    radial-gradient(900px 600px at 88% -10%, rgba(96,165,250,0.14), transparent 60%),
-    linear-gradient(180deg, var(--bg-2, #fafafa), var(--bg-1, #ffffff));
+  height: 100%;
 }
 
-/* --- Header grid stays (menu+lang left, brand center, auth right) --- */
-.header-bar {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+html {
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+    Noto Sans, Ubuntu, Cantarell, Helvetica Neue, Arial, "Apple Color Emoji",
+    "Segoe UI Emoji";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Keep content readable site-wide */
+main {
+  max-width: 1100px;     /* adjust to taste (960–1200px) */
+  margin-inline: auto;
+  padding: 20px 16px;
+}
+
+/* A gentle page background section, if you wrap parts with .section */
+.section {
+  background: var(--soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+/* ================================
+   Typography helpers
+   ================================ */
+.small {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.muted { color: var(--muted); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nowrap { white-space: nowrap; }
+
+/* Links */
+a {
+  color: #4338ca; /* indigo-700 */
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+/* ================================
+   Cards
+   ================================ */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+}
+
+/* ================================
+   Buttons
+   ================================ */
+.btn {
+  display: inline-flex;
   align-items: center;
-  min-height: 56px;
-  gap: .75rem;
-}
-.header-left, .header-right { display: flex; align-items: center; gap: .5rem; }
-.header-right { justify-content: flex-end; }
-.header-center { display: flex; justify-content: center; }
-.brand { font-weight: 800; font-size: 1.05rem; letter-spacing: .2px; color: var(--text, #0f172a); text-decoration: none; }
-
-/* --- Menu styles --- */
-.menu { position: relative; }
-.menu > summary {
-  list-style: none; cursor: pointer; width: 40px; height: 40px; border-radius: 10px;
-  display: grid; place-items: center; border: 1px solid var(--border, rgba(2,6,23,.08));
-  background: #fff; box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.05));
-}
-.menu > summary::-webkit-details-marker { display: none; }
-.menu-icon { width: 18px; height: 2px; background: #0f172a; position: relative; display: block; }
-.menu-icon::before, .menu-icon::after {
-  content: ""; position: absolute; left: 0; width: 18px; height: 2px; background: #0f172a;
-}
-.menu-icon::before { top: -6px; } .menu-icon::after { top: 6px; }
-.menu-sheet {
-  position: absolute; top: 48px; left: 0; z-index: 40; min-width: 220px; background: #fff;
-  border: 1px solid var(--border, rgba(2,6,23,.08)); border-radius: 12px;
-  box-shadow: var(--shadow-lg, 0 10px 30px rgba(2,6,23,.08)); padding: .5rem; display: grid;
-}
-.menu-sheet a { color: #0f172a; text-decoration: none; padding: .5rem .6rem; border-radius: 8px; }
-.menu-sheet a:hover { background: #f5f7fb; }
-
-/* --- Language select next to menu --- */
-.lang-select-form { display: inline-block; }
-.select {
-  appearance: none;
-  background: #fff;
-  color: #0f172a;
-  border: 1px solid var(--border, rgba(2,6,23,.10));
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
   border-radius: 10px;
-  padding: .5rem .9rem;
-  font-weight: 600;
-  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.05));
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--fg);
+  font-size: 0.95rem;
+  line-height: 1;
   cursor: pointer;
-}
-.select:focus { outline: none; box-shadow: 0 0 0 3px rgba(99,102,241,.18); border-color: rgba(37,99,235,.45); }
-
-/* --- Keep inputs from going edge-to-edge on desktop --- */
-.form-width { max-width: 720px; margin: 0 auto; }       /* wrap your form in this */
-.input, input, select, textarea { width: 100%; }
-.input-md { max-width: 420px; }  /* apply to individual inputs to cap width */
-.input-lg { max-width: 560px; }
-
-/* On small screens, let them be full-width */
-@media (max-width: 640px) {
-  .input-md, .input-lg { max-width: 100%; }
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* --- Tabs (black text on light) --- */
-.tabs {
-  display: flex; gap: .4rem; flex-wrap: wrap; padding: .5rem; background: #ffffff;
-  border: 1px solid var(--border, rgba(2,6,23,.08)); border-radius: 12px;
-  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.05));
-}
-.tab { color: #0f172a; text-decoration: none; font-weight: 600; padding: .5rem .7rem; border-radius: 10px; border: 1px solid transparent; }
-.tab:hover { background: #f5f7fb; border-color: rgba(2,6,23,.08); }
-.tab.active { background: #eef2ff; border-color: rgba(99,102,241,.35); color: #1e293b; }
-
-/* --- Button height alignment in header --- */
-.header-right .button, .header-right button, .header-right a.button {
-  height: 40px; display: inline-flex; align-items: center; justify-content: center; padding-inline: .9rem;
+.btn:hover {
+  background: #f9fafb;
 }
 
-/* === Compact input widths (opt-in via .compact-form) === */
-.compact-form input[type="text"],
-.compact-form input[type="email"],
-.compact-form input[type="tel"],
-.compact-form input[type="date"],
-.compact-form select {
+.btn:disabled,
+.btn[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+
+.btn-primary:hover {
+  filter: brightness(0.98);
+}
+
+/* Subtle text-only action */
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: #4338ca;
+}
+.btn-ghost:hover {
+  background: #eef2ff; /* indigo-50 */
+}
+
+/* ================================
+   Inputs / selects / textareas
+   ================================ */
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+input[type="password"],
+input[type="date"],
+input[type="number"],
+select,
+textarea {
+  appearance: none;
+  display: block;
   width: 100%;
-  max-width: 520px;
-}
-.compact-form textarea {
-  width: 100%;
-  max-width: 680px;
-}
-@media (max-width: 640px) {
-  .compact-form input,
-  .compact-form select,
-  .compact-form textarea {
-    max-width: 100%;
-  }
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--fg);
+  line-height: 1.25;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #94a3b8; /* slate-400 */
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); /* indigo focus ring */
+}
+
+/* Disabled */
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: #f1f5f9; /* slate-100 */
+  cursor: not-allowed;
+}
+
+/* Label stack helper: used by Field wrapper in your wizard */
+label.small > span:first-child {
+  font-weight: 500;
+  color: #334155; /* slate-700 */
+}
+
+/* ================================
+   Pills / tabs (for wizard top buttons)
+   ================================ */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.pill[aria-current="page"],
+.pill.is-active {
+  background: #eef2ff;      /* indigo-50 */
+  border-color: #e0e7ff;    /* indigo-100 */
+}
+.pill:hover { background: #f8fafc; }
+
+/* ================================
+   Tables (if you use any)
+   ================================ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th, td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+thead th {
+  font-size: 0.875rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* ================================
+   Header logo clamp
+   ================================ */
+.logo-clamp {
+  height: 28px;     /* adjust 24–32 as you like */
+  width: auto;
+  max-height: 28px;
+  display: block;
+}
+
+/* ================================
+   Utility layout helpers
+   ================================ */
+.container-narrow {
+  max-width: 900px;
+  margin-inline: auto;
+  padding-inline: 16px;
+}
+
+.container-wide {
+  max-width: 1280px;
+  margin-inline: auto;
+  padding-inline: 16px;
+}
+
+/* Simple grid helpers (optional) */
+.grid-2 { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-3 { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-4 { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+@media (max-width: 640px) {
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+}
+
+/* ================================
+   Print tweaks for your PDF flow
+   ================================ */
+@media print {
+  header, nav, footer { display: none !important; }
+  main { max-width: none; padding: 0; }
+  .card { border: none; box-shadow: none; padding: 0; }
+  .btn { display: none !important; }
+}
+
+/* ================================
+   Nice scrollbars (WebKit)
+   ================================ */
+*::-webkit-scrollbar { height: 10px; width: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1; /* slate-300 */
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; /* slate-400 */ }
