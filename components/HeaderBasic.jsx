@@ -1,4 +1,7 @@
-// ...imports unchanged
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
 
 export default function HeaderBasic() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -14,7 +17,7 @@ export default function HeaderBasic() {
             <img
               src="/logo.svg"
               alt="Liason logo"
-              className="logo-clamp block shrink-0"   // ⟵ clamp here
+              className="logo-clamp block shrink-0"
             />
             <span className="font-semibold tracking-tight truncate">
               Liason
