@@ -1,44 +1,51 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
-// These already exist in your repo per earlier file list
-import MenuDropdown from '../components/MenuDropdown';
-import LanguageSwitcher from '../components/LanguageSwitcher';
-import UserMenu from '../components/UserMenu';
+// If these already exist in your project, great—this uses them.
+// If not, you can temporarily comment them out.
+import MenuDropdown from './MenuDropdown';
+import LanguageSwitcher from './LanguageSwitcher';
+import AuthIcon from './AuthIcon';
 
 export default function HeaderBasic() {
-  const [menuOpen, setMenuOpen] = useState(false);
+  // purely to force client rendering (no SSR mismatch on center layout)
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+  if (!ready) return null;
 
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-white">
       <div className="mx-auto max-w-screen-2xl px-4">
-        {/* 3-column grid keeps the brand perfectly centered */}
-        <div className="grid h-14 grid-cols-[auto_1fr_auto] items-center gap-3">
-          {/* Left: menu + language switcher */}
-          <div className="flex items-center gap-2">
-            <MenuDropdown open={menuOpen} setOpen={setMenuOpen} />
-            <LanguageSwitcher />
+        <div className="flex h-14 items-center justify-between gap-3">
+          {/* LEFT: menu + language */}
+          <div className="flex items-center gap-3">
+            <MenuDropdown />
+            <div className="hidden sm:block">
+              <LanguageSwitcher />
+            </div>
           </div>
 
-          {/* Center: logo + brand */}
-          <div className="flex items-center justify-center">
-            <Link href="/" className="flex items-center gap-2 min-w-0">
-              <img
-                src="/logo.svg"
-                alt="Liason logo"
-                className="block h-7 w-auto shrink-0"
-              />
-              <span className="font-semibold tracking-tight truncate">
-                Liason
-              </span>
-            </Link>
-          </div>
+          {/* CENTER: logo + brand (kept compact) */}
+          <Link
+            href="/"
+            className="flex items-center gap-2 min-w-0 mx-auto"
+            aria-label="Go to Liason home"
+          >
+            <img
+              src="/logo.svg"
+              alt="Liason logo"
+              className="h-7 w-auto shrink-0 sm:h-8" /* smaller logo */
+            />
+            <span className="font-semibold tracking-tight truncate">
+              Liason
+            </span>
+          </Link>
 
-          {/* Right: user icon (handles login/logout inside) */}
-          <div className="flex items-center justify-end">
-            <UserMenu />
+          {/* RIGHT: auth/profile icon */}
+          <div className="flex items-center">
+            <AuthIcon />
           </div>
         </div>
       </div>
