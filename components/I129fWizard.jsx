@@ -26,8 +26,22 @@ const EMPTY = {
     otherNames:[{ lastName:'', firstName:'', middleName:'' }],
     phone:'', mobile:'', email:'',
     parents:[
-      { lastName:'', firstName:'', middleName:'', dob:'', cityBirth:'', countryBirth:'', nationality:'', sex:'' },
-      { lastName:'', firstName:'', middleName:'', dob:'', cityBirth:'', countryBirth:'', nationality:'', sex:'' },
+      {
+        lastName:'', firstName:'', middleName:'',
+        maidenName:'', otherNames:'',
+        dob:'', cityBirth:'', countryBirth:'',
+        nationality:'', sex:'',
+        currentCityCountry:'',
+        isDeceased:false, deathDate:''
+      },
+      {
+        lastName:'', firstName:'', middleName:'',
+        maidenName:'', otherNames:'',
+        dob:'', cityBirth:'', countryBirth:'',
+        nationality:'', sex:'',
+        currentCityCountry:'',
+        isDeceased:false, deathDate:''
+      },
     ],
     natzNumber:'', natzPlace:'', natzDate:'',
     sex:'', maritalStatus:'', provinceBirth:'', dob:'', cityBirth:'', countryBirth:'',
@@ -56,8 +70,22 @@ const EMPTY = {
       { employer:'', street:'', unitType:'', unitNum:'', city:'', state:'', zip:'', province:'', postal:'', country:'', occupation:'', from:'', to:'' },
     ],
     parents:[
-      { lastName:'', firstName:'', middleName:'', dob:'', cityBirth:'', countryBirth:'', nationality:'', sex:'' },
-      { lastName:'', firstName:'', middleName:'', dob:'', cityBirth:'', countryBirth:'', nationality:'', sex:'' },
+      {
+        lastName:'', firstName:'', middleName:'',
+        maidenName:'', otherNames:'',
+        dob:'', cityBirth:'', countryBirth:'',
+        nationality:'', sex:'',
+        currentCityCountry:'',
+        isDeceased:false, deathDate:''
+      },
+      {
+        lastName:'', firstName:'', middleName:'',
+        maidenName:'', otherNames:'',
+        dob:'', cityBirth:'', countryBirth:'',
+        nationality:'', sex:'',
+        currentCityCountry:'',
+        isDeceased:false, deathDate:''
+      },
     ],
     inUS:'', i94:'', classOfAdmission:'', statusExpires:'', arrivalDate:'',
     passportNumber:'', travelDocNumber:'', passportCountry:'', passportExpiration:'',
@@ -159,10 +187,25 @@ export default function I129fWizard() {
     setBusy(true);
     try{
       const normalized=structuredClone(form);
-      const datePaths=['petitioner.natzDate','beneficiary.dob','preparer.signDate','interpreter.signDate'];
+      const datePaths=[
+        'petitioner.dob',
+        'petitioner.natzDate',
+        'beneficiary.dob',
+        'beneficiary.arrivalDate',
+        'beneficiary.statusExpires',
+        'beneficiary.passportExpiration',
+        'preparer.signDate',
+        'interpreter.signDate',
+      ];
       datePaths.forEach(p=>{ const v=getPath(normalized,p); if(v) setPath(normalized,p,normalizeUs(v)); });
-      (normalized.petitioner?.parents||[]).forEach((p,i)=>{ if(p?.dob) setPath(normalized,`petitioner.parents.${i}.dob`,normalizeUs(p.dob)); });
-      (normalized.beneficiary?.parents||[]).forEach((p,i)=>{ if(p?.dob) setPath(normalized,`beneficiary.parents.${i}.dob`,normalizeUs(p.dob)); });
+      (normalized.petitioner?.parents||[]).forEach((p,i)=>{ 
+        if(p?.dob) setPath(normalized,`petitioner.parents.${i}.dob`,normalizeUs(p.dob));
+        if(p?.deathDate) setPath(normalized,`petitioner.parents.${i}.deathDate`,normalizeUs(p.deathDate));
+      });
+      (normalized.beneficiary?.parents||[]).forEach((p,i)=>{ 
+        if(p?.dob) setPath(normalized,`beneficiary.parents.${i}.dob`,normalizeUs(p.dob));
+        if(p?.deathDate) setPath(normalized,`beneficiary.parents.${i}.deathDate`,normalizeUs(p.deathDate));
+      });
       (normalized.physicalAddresses||[]).forEach((a,i)=>{ if(a?.from) setPath(normalized,`physicalAddresses.${i}.from`,normalizeUs(a.from)); if(a?.to) setPath(normalized,`physicalAddresses.${i}.to`,normalizeUs(a.to)); });
       (normalized.employment||[]).forEach((e,i)=>{ if(e?.from) setPath(normalized,`employment.${i}.from`,normalizeUs(e.from)); if(e?.to) setPath(normalized,`employment.${i}.to`,normalizeUs(e.to)); });
       (normalized.beneficiary?.employment||[]).forEach((e,i)=>{ if(e?.from) setPath(normalized,`beneficiary.employment.${i}.from`,normalizeUs(e.from)); if(e?.to) setPath(normalized,`beneficiary.employment.${i}.to`,normalizeUs(e.to)); });
@@ -207,7 +250,7 @@ export default function I129fWizard() {
 
         {step===4 && <Part2Identity form={form} update={update} add={add} remove={remove} />}
         {step===5 && <Part2Addresses form={form} update={update} />}
-        {step===6 && <Part2Employment form={form} update={update} />}
+        {step===6 && <Part2Employment form={form} update={update} add={add} remove={remove} />}
         {step===7 && <Part2Parents form={form} update={update} />}
 
         {step===8 && <Parts5to7 form={form} update={update} />}
@@ -237,7 +280,7 @@ export default function I129fWizard() {
   );
 }
 
-/* ---------- Sections (unchanged content logic; compact layout) ---------- */
+/* ---------- Sections (compact layout) ---------- */
 function Part1Identity({ form, update, add, remove }){
   const onAddOther = () => add('petitioner.otherNames', ()=>({lastName:'', firstName:'', middleName:''}));
   const other = Array.isArray(form.petitioner?.otherNames)?form.petitioner.otherNames:[];
@@ -401,41 +444,289 @@ function Part1Employment({ form, update, add, remove }){
   );
 }
 
-/* -- Part1ParentsNatz, Part2Identity, Part2Addresses, Part2Employment, Part2Parents are identical to your last file, only width tweaks -- */
-function Part1ParentsNatz({ form, update }) { /* …exactly as in your last file… */ return (
-  <section style={{display:'grid', gap:12}}>
-    <h3 style={{margin:0}}>Part 1 — Parents & Naturalization</h3>
-    {/* (same content as your current implementation) */}
-  </section>
-); }
+function Part1ParentsNatz({ form, update }) {
+  const parents = Array.isArray(form.petitioner?.parents) ? form.petitioner.parents : [];
+  const ensureParent = (i) => parents[i] || {};
 
-function Part2Identity({ form, update, add, remove }) { /* …same fields… */ return (
-  <section style={{display:'grid', gap:12}}>
-    <h3 style={{margin:0}}>Part 2 — Beneficiary (Identity)</h3>
-    {/* (same content as your current implementation) */}
-  </section>
-); }
+  const ParentCard = ({ idx, title }) => {
+    const p = ensureParent(idx);
+    const base = `petitioner.parents.${idx}`;
+    return (
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>{title}</strong></div>
 
-function Part2Addresses({ form, update }) { /* …same fields… */ return (
-  <section style={{display:'grid', gap:12}}>
-    <h3 style={{margin:0}}>Part 2 — Addresses</h3>
-    {/* (same content as your current implementation) */}
-  </section>
-); }
+        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+          <Field label="Family name (last)"><input value={p.lastName||''} onChange={e=>update(`${base}.lastName`, e.target.value)} /></Field>
+          <Field label="Given name (first)"><input value={p.firstName||''} onChange={e=>update(`${base}.firstName`, e.target.value)} /></Field>
+          <Field label="Middle name"><input value={p.middleName||''} onChange={e=>update(`${base}.middleName`, e.target.value)} /></Field>
+        </div>
 
-function Part2Employment({ form, update }) { /* …same fields… */ return (
-  <section style={{display:'grid', gap:12}}>
-    <h3 style={{margin:0}}>Part 2 — Employment (last 5 years)</h3>
-    {/* (same content as your current implementation, but without remove button for 0th) */}
-  </section>
-); }
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+          <Field label="Maiden/other last name(s)"><input value={p.maidenName||''} onChange={e=>update(`${base}.maidenName`, e.target.value)} /></Field>
+          <Field label="Other names used"><input value={p.otherNames||''} onChange={e=>update(`${base}.otherNames`, e.target.value)} /></Field>
+        </div>
 
-function Part2Parents({ form, update }) { /* …same as your file… */ return (
-  <section style={{display:'grid', gap:12}}>
-    <h3 style={{margin:0}}>Part 2 — Parents</h3>
-    {/* (same content as your current implementation) */}
-  </section>
-); }
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10}}>
+          <Field label="Date of birth"><DateInput value={p.dob||''} onChange={v=>update(`${base}.dob`, v)} /></Field>
+          <Field label="Sex"><input value={p.sex||''} onChange={e=>update(`${base}.sex`, e.target.value)} placeholder="M / F / X" /></Field>
+          <Field label="Country of citizenship"><input value={p.nationality||''} onChange={e=>update(`${base}.nationality`, e.target.value)} /></Field>
+        </div>
+
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+          <Field label="City of birth"><input value={p.cityBirth||''} onChange={e=>update(`${base}.cityBirth`, e.target.value)} /></Field>
+          <Field label="Country of birth"><input value={p.countryBirth||''} onChange={e=>update(`${base}.countryBirth`, e.target.value)} /></Field>
+        </div>
+
+        <Field label="Current city/country"><input value={p.currentCityCountry||''} onChange={e=>update(`${base}.currentCityCountry`, e.target.value)} placeholder="City, Country" /></Field>
+
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, alignItems:'end'}}>
+          <label className="small" style={{display:'flex', gap:8, alignItems:'center'}}>
+            <input type="checkbox" checked={!!p.isDeceased} onChange={e=>update(`${base}.isDeceased`, e.target.checked)} />
+            Deceased?
+          </label>
+          {p.isDeceased && (
+            <Field label="Date of death">
+              <DateInput value={p.deathDate||''} onChange={v=>update(`${base}.deathDate`, v)} />
+            </Field>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const P = form.petitioner || {};
+
+  return (
+    <section style={{display:'grid', gap:12}}>
+      <h3 style={{margin:0}}>Part 1 — Parents & Naturalization</h3>
+
+      <ParentCard idx={0} title="Parent 1 — Mother" />
+      <ParentCard idx={1} title="Parent 2 — Father" />
+
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Petitioner Naturalization / Citizenship</strong></div>
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10}}>
+          <Field label="Certificate #"><input value={P.natzNumber||''} onChange={e=>update('petitioner.natzNumber', e.target.value)} /></Field>
+          <Field label="Place of issuance"><input value={P.natzPlace||''} onChange={e=>update('petitioner.natzPlace', e.target.value)} /></Field>
+          <Field label="Date of issuance"><DateInput value={P.natzDate||''} onChange={v=>update('petitioner.natzDate', v)} /></Field>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Part2Identity({ form, update, add, remove }) {
+  const B = form.beneficiary || {};
+  const other = Array.isArray(B.otherNames) ? B.otherNames : [];
+  const onAddOther = () => add('beneficiary.otherNames', ()=>({lastName:'', firstName:'', middleName:''}));
+
+  return (
+    <section style={{display:'grid', gap:12}}>
+      <h3 style={{margin:0}}>Part 2 — Beneficiary (Identity)</h3>
+
+      <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+        <Field label="Family name (last)"><input value={B.lastName||''} onChange={e=>update('beneficiary.lastName', e.target.value)} /></Field>
+        <Field label="Given name (first)"><input value={B.firstName||''} onChange={e=>update('beneficiary.firstName', e.target.value)} /></Field>
+        <Field label="Middle name"><input value={B.middleName||''} onChange={e=>update('beneficiary.middleName', e.target.value)} /></Field>
+      </div>
+
+      <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+        <Field label="A-Number"><input value={B.aNumber||''} onChange={e=>update('beneficiary.aNumber', e.target.value)} /></Field>
+        <Field label="SSN"><input value={B.ssn||''} onChange={e=>update('beneficiary.ssn', e.target.value)} /></Field>
+        <Field label="Date of birth"><DateInput value={B.dob||''} onChange={v=>update('beneficiary.dob', v)} /></Field>
+      </div>
+
+      <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+        <Field label="City of birth"><input value={B.cityBirth||''} onChange={e=>update('beneficiary.cityBirth', e.target.value)} /></Field>
+        <Field label="Country of birth"><input value={B.countryBirth||''} onChange={e=>update('beneficiary.countryBirth', e.target.value)} /></Field>
+        <Field label="Country of citizenship"><input value={B.nationality||''} onChange={e=>update('beneficiary.nationality', e.target.value)} /></Field>
+      </div>
+
+      <div className="small" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <strong>Other Names Used</strong>
+        <button type="button" className="btn" onClick={onAddOther}>+ Add other name</button>
+      </div>
+      {other.map((n,i)=>(
+        <div key={i} style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr auto', gap:10, alignItems:'end'}}>
+          <Field label={`Other name #${i+1} — Family`}><input value={n?.lastName||''} onChange={e=>update(`beneficiary.otherNames.${i}.lastName`, e.target.value)} /></Field>
+          <Field label="Given"><input value={n?.firstName||''} onChange={e=>update(`beneficiary.otherNames.${i}.firstName`, e.target.value)} /></Field>
+          <Field label="Middle"><input value={n?.middleName||''} onChange={e=>update(`beneficiary.otherNames.${i}.middleName`, e.target.value)} /></Field>
+          {i>0 && <button type="button" className="btn" onClick={()=>remove('beneficiary.otherNames', i)}>Remove</button>}
+        </div>
+      ))}
+
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>US Entry / Status</strong></div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+          <Field label="In the U.S. now? (Yes/No)"><input value={B.inUS||''} onChange={e=>update('beneficiary.inUS', e.target.value)} /></Field>
+          <Field label="I-94 #"><input value={B.i94||''} onChange={e=>update('beneficiary.i94', e.target.value)} /></Field>
+          <Field label="Class of admission"><input value={B.classOfAdmission||''} onChange={e=>update('beneficiary.classOfAdmission', e.target.value)} /></Field>
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+          <Field label="Date of arrival"><DateInput value={B.arrivalDate||''} onChange={v=>update('beneficiary.arrivalDate', v)} /></Field>
+          <Field label="Status expires"><DateInput value={B.statusExpires||''} onChange={v=>update('beneficiary.statusExpires', v)} /></Field>
+        </div>
+      </div>
+
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Passport / Travel Document</strong></div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+          <Field label="Passport #"><input value={B.passportNumber||''} onChange={e=>update('beneficiary.passportNumber', e.target.value)} /></Field>
+          <Field label="Travel doc #"><input value={B.travelDocNumber||''} onChange={e=>update('beneficiary.travelDocNumber', e.target.value)} /></Field>
+          <Field label="Issuing country"><input value={B.passportCountry||''} onChange={e=>update('beneficiary.passportCountry', e.target.value)} /></Field>
+        </div>
+        <Field label="Passport expiration"><DateInput value={B.passportExpiration||''} onChange={v=>update('beneficiary.passportExpiration', v)} /></Field>
+      </div>
+    </section>
+  );
+}
+
+function Part2Addresses({ form, update }) {
+  const m=form.beneficiary?.mailing||{};
+  const p=form.beneficiary?.physicalAddress||{};
+  return (
+    <section style={{display:'grid', gap:12}}>
+      <h3 style={{margin:0}}>Part 2 — Addresses</h3>
+
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Mailing Address</strong></div>
+        <div style={{display:'grid', gridTemplateColumns:'1fr 2fr', gap:10}}>
+          <Field label="In care of (c/o)"><input value={m.inCareOf||''} onChange={e=>update('beneficiary.mailing.inCareOf', e.target.value)} /></Field>
+          <Field label="Street number & name"><input value={m.street||''} onChange={e=>update('beneficiary.mailing.street', e.target.value)} /></Field>
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10}}>
+          <Field label="Unit type"><UnitTypeSelect value={m.unitType||''} onChange={v=>update('beneficiary.mailing.unitType', v)} /></Field>
+          <Field label="Unit #"><input value={m.unitNum||''} onChange={e=>update('beneficiary.mailing.unitNum', e.target.value)} /></Field>
+          <Field label="City"><input value={m.city||''} onChange={e=>update('beneficiary.mailing.city', e.target.value)} /></Field>
+          <Field label="State"><input value={m.state||''} onChange={e=>update('beneficiary.mailing.state', e.target.value)} /></Field>
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10}}>
+          <Field label="ZIP"><input value={m.zip||''} onChange={e=>update('beneficiary.mailing.zip', e.target.value)} /></Field>
+          <Field label="Province"><input value={m.province||''} onChange={e=>update('beneficiary.mailing.province', e.target.value)} /></Field>
+          <Field label="Postal Code"><input value={m.postal||''} onChange={e=>update('beneficiary.mailing.postal', e.target.value)} /></Field>
+          <Field label="Country"><input value={m.country||''} onChange={e=>update('beneficiary.mailing.country', e.target.value)} /></Field>
+        </div>
+      </div>
+
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>Physical Address</strong></div>
+        <Field label="Street number & name"><input value={p.street||''} onChange={e=>update('beneficiary.physicalAddress.street', e.target.value)} /></Field>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10}}>
+          <Field label="Unit type"><UnitTypeSelect value={p.unitType||''} onChange={v=>update('beneficiary.physicalAddress.unitType', v)} /></Field>
+          <Field label="Unit #"><input value={p.unitNum||''} onChange={e=>update('beneficiary.physicalAddress.unitNum', e.target.value)} /></Field>
+          <Field label="City"><input value={p.city||''} onChange={e=>update('beneficiary.physicalAddress.city', e.target.value)} /></Field>
+          <Field label="State"><input value={p.state||''} onChange={e=>update('beneficiary.physicalAddress.state', e.target.value)} /></Field>
+        </div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10}}>
+          <Field label="ZIP"><input value={p.zip||''} onChange={e=>update('beneficiary.physicalAddress.zip', e.target.value)} /></Field>
+          <Field label="Province"><input value={p.province||''} onChange={e=>update('beneficiary.physicalAddress.province', e.target.value)} /></Field>
+          <Field label="Postal Code"><input value={p.postal||''} onChange={e=>update('beneficiary.physicalAddress.postal', e.target.value)} /></Field>
+          <Field label="Country"><input value={p.country||''} onChange={e=>update('beneficiary.physicalAddress.country', e.target.value)} /></Field>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Part2Employment({ form, update, add, remove }) {
+  const list = Array.isArray(form.beneficiary?.employment) ? form.beneficiary.employment : [];
+  return (
+    <section style={{display:'grid', gap:12}}>
+      <h3 style={{margin:0}}>Part 2 — Employment (last 5 years)</h3>
+      <div className="small" style={{display:'flex', justifyContent:'flex-end'}}>
+        <button type="button" className="btn" onClick={()=>add('beneficiary.employment',()=>({employer:'',street:'',unitType:'',unitNum:'',city:'',state:'',zip:'',province:'',postal:'',country:'',occupation:'',from:'',to:''}))}>+ Add another employer</button>
+      </div>
+      {list.map((e,i)=>{
+        const ei=e||{};
+        const base=`beneficiary.employment.${i}`;
+        return (
+          <div key={i} className="card" style={{display:'grid', gap:10}}>
+            <div className="small"><strong>Employer #{i+1}</strong></div>
+            <Field label="Employer name"><input value={ei.employer||''} onChange={ev=>update(`${base}.employer`, ev.target.value)} /></Field>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:10}}>
+              <Field label="Street"><input value={ei.street||''} onChange={ev=>update(`${base}.street`, ev.target.value)} /></Field>
+              <Field label="Unit type"><UnitTypeSelect value={ei.unitType||''} onChange={v=>update(`${base}.unitType`, v)} /></Field>
+              <Field label="Unit #"><input value={ei.unitNum||''} onChange={ev=>update(`${base}.unitNum`, ev.target.value)} /></Field>
+              <Field label="City"><input value={ei.city||''} onChange={ev=>update(`${base}.city`, ev.target.value)} /></Field>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10}}>
+              <Field label="State"><input value={ei.state||''} onChange={ev=>update(`${base}.state`, ev.target.value)} /></Field>
+              <Field label="ZIP"><input value={ei.zip||''} onChange={ev=>update(`${base}.zip`, ev.target.value)} /></Field>
+              <Field label="Province"><input value={ei.province||''} onChange={ev=>update(`${base}.province`, ev.target.value)} /></Field>
+              <Field label="Postal Code"><input value={ei.postal||''} onChange={ev=>update(`${base}.postal`, ev.target.value)} /></Field>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+              <Field label="Country"><input value={ei.country||''} onChange={ev=>update(`${base}.country`, ev.target.value)} /></Field>
+              <Field label="Occupation"><input value={ei.occupation||''} onChange={ev=>update(`${base}.occupation`, ev.target.value)} /></Field>
+              <Field label="From"><DateInput value={ei.from||''} onChange={v=>update(`${base}.from`, v)} /></Field>
+            </div>
+            <Field label="To"><DateInput value={ei.to||''} onChange={v=>update(`${base}.to`, v)} /></Field>
+            {i>0 && <button type="button" className="btn" onClick={()=>remove('beneficiary.employment',i)}>Remove</button>}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+function Part2Parents({ form, update }) {
+  const parents = Array.isArray(form.beneficiary?.parents) ? form.beneficiary.parents : [];
+  const ensureParent = (i) => parents[i] || {};
+
+  const ParentCard = ({ idx, title }) => {
+    const p = ensureParent(idx);
+    const base = `beneficiary.parents.${idx}`;
+    return (
+      <div className="card" style={{display:'grid', gap:10}}>
+        <div className="small"><strong>{title}</strong></div>
+
+        <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+          <Field label="Family name (last)"><input value={p.lastName||''} onChange={e=>update(`${base}.lastName`, e.target.value)} /></Field>
+          <Field label="Given name (first)"><input value={p.firstName||''} onChange={e=>update(`${base}.firstName`, e.target.value)} /></Field>
+          <Field label="Middle name"><input value={p.middleName||''} onChange={e=>update(`${base}.middleName`, e.target.value)} /></Field>
+        </div>
+
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+          <Field label="Maiden/other last name(s)"><input value={p.maidenName||''} onChange={e=>update(`${base}.maidenName`, e.target.value)} /></Field>
+          <Field label="Other names used"><input value={p.otherNames||''} onChange={e=>update(`${base}.otherNames`, e.target.value)} /></Field>
+        </div>
+
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10}}>
+          <Field label="Date of birth"><DateInput value={p.dob||''} onChange={v=>update(`${base}.dob`, v)} /></Field>
+          <Field label="Sex"><input value={p.sex||''} onChange={e=>update(`${base}.sex`, e.target.value)} placeholder="M / F / X" /></Field>
+          <Field label="Country of citizenship"><input value={p.nationality||''} onChange={e=>update(`${base}.nationality`, e.target.value)} /></Field>
+        </div>
+
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+          <Field label="City of birth"><input value={p.cityBirth||''} onChange={e=>update(`${base}.cityBirth`, e.target.value)} /></Field>
+          <Field label="Country of birth"><input value={p.countryBirth||''} onChange={e=>update(`${base}.countryBirth`, e.target.value)} /></Field>
+        </div>
+
+        <Field label="Current city/country"><input value={p.currentCityCountry||''} onChange={e=>update(`${base}.currentCityCountry`, e.target.value)} placeholder="City, Country" /></Field>
+
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, alignItems:'end'}}>
+          <label className="small" style={{display:'flex', gap:8, alignItems:'center'}}>
+            <input type="checkbox" checked={!!p.isDeceased} onChange={e=>update(`${base}.isDeceased`, e.target.checked)} />
+            Deceased?
+          </label>
+          {p.isDeceased && (
+            <Field label="Date of death">
+              <DateInput value={p.deathDate||''} onChange={v=>update(`${base}.deathDate`, v)} />
+            </Field>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <section style={{display:'grid', gap:12}}>
+      <h3 style={{margin:0}}>Part 2 — Parents</h3>
+      <ParentCard idx={0} title="Parent 1 — Mother" />
+      <ParentCard idx={1} title="Parent 2 — Father" />
+    </section>
+  );
+}
 
 function Parts5to7({ form, update }){
   const itpUsed = !!form.interpreter?.used;
