@@ -1,15 +1,24 @@
-// app/layout.jsx
+import './globals.css';
+import HeaderBasic from '../components/HeaderBasic';
+
 export const metadata = {
-  title: { default: "Liason", template: "%s | Liason" },
+  title: 'Liason',
+  description: 'Liason – immigration made simpler',
+  // Use the same logo for the browser tab icon
   icons: {
-    icon: "/icon.svg", // uses app/icon.svg
+    icon: '/logo.svg',
+    shortcut: '/logo.svg',
+    apple: '/logo.svg',
   },
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="min-h-screen bg-white text-slate-900">
+        <HeaderBasic />
+        <main className="min-h-svh">{children}</main>
+      </body>
     </html>
   );
 }
