@@ -27,41 +27,72 @@ export default function HeaderBasic() {
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-white">
       <div className="mx-auto max-w-screen-2xl px-4">
-        <div className="relative flex h-14 items-center justify-between">
-          {/* LEFT CLUSTER: menu + language */}
-          <div className="flex items-center gap-2">
+        {/* FORCE HORIZONTAL ROW */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            height: 56,
+            position: 'relative',
+            width: '100%',
+            gap: 12,
+          }}
+        >
+          {/* LEFT: menu + language */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               type="button"
               aria-label="Open menu"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border hover:bg-slate-50"
               onClick={() => setOpen((o) => !o)}
+              style={{
+                height: 36,
+                width: 36,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 8,
+                border: '1px solid #e2e8f0',
+                background: '#fff',
+              }}
             >
               <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
                 <path d="M2 4h14M2 9h14M2 14h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </button>
-            <LanguageSwitcher />
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <LanguageSwitcher />
+            </div>
           </div>
 
-          {/* CENTER: logo + brand (hard-clamped size, perfectly centered) */}
+          {/* CENTER: logo + brand (hard-clamped size) */}
           <Link
             href="/"
-            className="absolute left-1/2 -translate-x-1/2 flex min-w-0 items-center gap-2"
             aria-label="Go to homepage"
+            style={{
+              position: 'absolute',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              minWidth: 0,
+              textDecoration: 'none',
+              color: 'inherit',
+            }}
           >
             <img
               src="/logo.svg"
               alt="Liason logo"
               width={112}
               height={28}
-              className="block shrink-0"
-              style={{ height: 28, width: 'auto', maxWidth: 160 }}
+              style={{ height: 28, width: 'auto', maxWidth: 160, display: 'block' }}
             />
             <span className="truncate font-semibold tracking-tight">Liason</span>
           </Link>
 
-          {/* RIGHT CLUSTER: auth/user icon (switches login/logout) */}
-          <div className="flex items-center">
+          {/* RIGHT: auth/user icon (toggles login/logout internally) */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
             <AuthWidget />
           </div>
         </div>
