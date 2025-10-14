@@ -27,8 +27,8 @@ export default function HeaderBasic() {
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-white">
       <div className="mx-auto max-w-screen-2xl px-4">
-        <div className="relative flex h-14 items-center justify-between gap-3">
-          {/* LEFT: hamburger + language */}
+        <div className="relative flex h-14 items-center justify-between">
+          {/* LEFT CLUSTER: menu + language */}
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -43,7 +43,7 @@ export default function HeaderBasic() {
             <LanguageSwitcher />
           </div>
 
-          {/* CENTER: logo + brand (hard size clamp) */}
+          {/* CENTER: logo + brand (hard-clamped size, perfectly centered) */}
           <Link
             href="/"
             className="absolute left-1/2 -translate-x-1/2 flex min-w-0 items-center gap-2"
@@ -54,14 +54,14 @@ export default function HeaderBasic() {
               alt="Liason logo"
               width={112}
               height={28}
-              className="shrink-0"
-              style={{ height: 28, width: 'auto', maxWidth: 160, display: 'block' }}
+              className="block shrink-0"
+              style={{ height: 28, width: 'auto', maxWidth: 160 }}
             />
             <span className="truncate font-semibold tracking-tight">Liason</span>
           </Link>
 
-          {/* RIGHT: auth avatar/login */}
-          <div className="flex items-center gap-2">
+          {/* RIGHT CLUSTER: auth/user icon (switches login/logout) */}
+          <div className="flex items-center">
             <AuthWidget />
           </div>
         </div>
