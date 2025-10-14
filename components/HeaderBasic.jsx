@@ -27,7 +27,9 @@ export default function HeaderBasic() {
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-white">
       <div className="mx-auto max-w-screen-2xl px-4">
-        <div className="flex h-14 items-center justify-between gap-3">
+        {/* Make this relative so the center brand can be absolutely centered */}
+        <div className="relative flex h-14 items-center justify-between gap-3">
+
           {/* LEFT: hamburger + language */}
           <div className="flex items-center gap-2">
             <button
@@ -43,13 +45,17 @@ export default function HeaderBasic() {
             <LanguageSwitcher />
           </div>
 
-          {/* CENTER: logo + brand */}
-          <Link href="/" className="flex min-w-0 items-center gap-2">
-            <img src="/logo.svg" alt="Liason logo" className="h-7 w-auto" />
+          {/* CENTER: logo + brand (truly centered regardless of left/right widths) */}
+          <Link
+            href="/"
+            className="absolute left-1/2 -translate-x-1/2 flex min-w-0 items-center gap-2"
+            aria-label="Go to homepage"
+          >
+            <img src="/logo.svg" alt="Liason logo" className="h-7 w-auto shrink-0" />
             <span className="truncate font-semibold tracking-tight">Liason</span>
           </Link>
 
-          {/* RIGHT: auth */}
+          {/* RIGHT: auth avatar/login */}
           <div className="flex items-center gap-2">
             <AuthWidget />
           </div>
