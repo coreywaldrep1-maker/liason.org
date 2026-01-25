@@ -39,14 +39,14 @@ export default function I129fGate() {
     return <PrePayLanding />;
   }
 
-  // Paid: show the real tool. (AI + Download only after paid)
+  // Paid: show the real tool.
   return (
     <>
       <I129fWizard />
       <div className="card" style={{ display: 'grid', gap: 8 }}>
-        {/* Add your AiHelp here later if you like */}
-        <a className="btn btn-primary" href="/api/i129f?download=1">
-          Download filled I-129F (PDF)
+        {/* If user already saved, this GET will return a filled PDF; otherwise it returns the blank template. */}
+        <a className="btn" href="/api/i129f/pdf">
+          Download (from saved draft)
         </a>
       </div>
     </>
