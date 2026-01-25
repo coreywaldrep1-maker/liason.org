@@ -7,6 +7,8 @@ import LanguageSwitcher from './LanguageSwitcher';
 import AuthWidget from './AuthWidget';
 
 const NAV = [
+  { href: '/', label: 'Home' },
+  { href: '/flow/us/i-129f', label: 'I-129F Wizard' },
   { href: '/visas', label: 'Visas' },
   { href: '/visas/us', label: 'United States' },
   { href: '/visas/canada', label: 'Canada' },
@@ -57,7 +59,12 @@ export default function HeaderBasic() {
               }}
             >
               <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-                <path d="M2 4h14M2 9h14M2 14h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path
+                  d="M2 4h14M2 9h14M2 14h14"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
               </svg>
             </button>
             <div style={{ display: 'flex', alignItems: 'center' }}>
