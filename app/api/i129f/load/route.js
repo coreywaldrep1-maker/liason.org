@@ -3,25 +3,31 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import { NextResponse } from 'next/server';
+import sql from '@/lib/db';
+import { requireAuth } from '@/lib/auth';
 
-// GET /api/i129f/load?formId=...
+// GET /api/i129f/load
+// Loads the latest saved I-129F wizard data for the logged-in user.
 export async function GET(req) {
   try {
-    const { searchParams } = new URL(req.url);
-    const formId = searchParams.get('formId');
+    const user = await requireAuth(req);
 
-    // TODO: load your saved form data from DB by formId/user
-    // const data = await db.i129f.findOne({ formId, userId });
+    const rows = await sql`
+      SELECT data, updated_at
+      FROM i129f_entries
+      WHERE user_id = ${user.id}
+      LIMIT 1
+    `;
 
     return NextResponse.json({
       ok: true,
-      formId,
-      data: {} // replace with real data
+      data: rows[0]?.data ?? {},
+      updated_at: rows[0]?.updated_at ?? null,
     });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err?.message || 'Load failed' },
-      { status: 500 }
-    );
+    // If not logged in, return 401 so the client can handle it quietly.
+    const msg = String(err?.message || err);
+    const status = msg.includes('no-jwt') || msg.includes('no-user') ? 401 : 500;
+    return NextResponse.json({ ok: false, error: msg }, { status });
   }
 }
