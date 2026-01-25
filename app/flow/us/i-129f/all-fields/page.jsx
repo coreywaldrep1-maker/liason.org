@@ -3,10 +3,24 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { I129F_SECTIONS } from '@/lib/i129f-mapping';
 
 export default function AllFieldsPage() {
+  const router = useRouter();
+  const sp = useSearchParams();
+  const debug = (sp.get('debug') || '').toLowerCase();
+  const enabled = debug === '1' || debug === 'true' || debug === 'yes';
+
   const [form, setForm] = useState({});
+  const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    if (!enabled) {
+      // Keep this route from confusing real users. It remains available for dev use.
+      router.replace('/flow/us/i-129f');
+    }
+  }, [enabled, router]);
 
   // fill with blanks so every input is editable
   const flatFields = useMemo(() => {
@@ -52,6 +66,39 @@ export default function AllFieldsPage() {
     else alert('Saved!');
   }
 
+  async function downloadPdf() {
+    setDownloading(true);
+    try {
+      const r = await fetch('/api/i129f/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ data: form }),
+      });
+
+      const ct = (r.headers.get('content-type') || '').toLowerCase();
+      if (!r.ok || !ct.includes('application/pdf')) {
+        const txt = await r.text().catch(() => '');
+        throw new Error(txt || `Download failed (status ${r.status})`);
+      }
+
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'i-129f-filled.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Download failed. Try saving first, then use the GET download.');
+      console.error(e);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   useEffect(() => {
     (async () => {
       try {
@@ -61,6 +108,16 @@ export default function AllFieldsPage() {
       } catch {}
     })();
   }, []);
+
+  if (!enabled) {
+    return (
+      <main className="section">
+        <div className="container">
+          <div className="card">Redirecting…</div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="section">
@@ -84,10 +141,13 @@ export default function AllFieldsPage() {
               )}
             </label>
           ))}
-          <div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
             <button className="btn btn-primary" onClick={save}>Save</button>
-            <a className="btn" href="/api/i129f/pdf" style={{ marginLeft: 8 }}>Download PDF</a>
-            <a className="btn" href="/api/i129f/mapping-report" style={{ marginLeft: 8 }}>Mapping report</a>
+            <button className="btn" onClick={downloadPdf} disabled={downloading}>
+              {downloading ? 'Downloading…' : 'Download PDF (POST current form)'}
+            </button>
+            <a className="btn" href="/api/i129f/pdf">Download PDF (GET from saved)</a>
+            <a className="btn" href="/api/i129f/mapping-report">Mapping report</a>
           </div>
         </div>
       </div>
