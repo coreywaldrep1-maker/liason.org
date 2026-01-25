@@ -2,10 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import PayButtons from '@/components/PayButtons';
-import I129fWizard from '@/components/I129fWizard';
-import AiHelp from '@/components/AiHelp';
 
-export default function I129fGate() {
+export default function I129fGate({ children }) {
   const [loading, setLoading] = useState(true);
   const [paid, setPaid] = useState(false);
   const payRef = useRef(null);
@@ -64,8 +62,7 @@ export default function I129fGate() {
   // Paid view
   return (
     <div style={{display:'grid', gap:16}}>
-      <I129fWizard />
-      <AiHelp />
+      {children ?? null}
     </div>
   );
 }
