@@ -1,76 +1,108 @@
-// app/api/i129f/route.js
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 import { NextResponse } from 'next/server';
-import { readFile } from 'fs/promises';
-import path from 'path';
-import { PDFDocument } from 'pdf-lib';
-import { neon } from '@neondatabase/serverless';
-import * as jose from 'jose';
+import path from 'node:path';
+import { readFile, access } from 'node:fs/promises';
+import { constants as FS } from 'node:fs';
 
-const sql = neon(process.env.DATABASE_URL);
+import sql from '@/lib/db';
+import { getUserFromCookie, requireAuth } from '@/lib/auth';
+import { fillI129FPdf } from '@/lib/pdf/fillI129F';
 
-// Your PDF template name
-const TEMPLATE_FILE = 'i-129f.pdf';
-const TEMPLATE_PATH = path.join(process.cwd(), 'public', 'forms', TEMPLATE_FILE);
+const CANDIDATE_PDFS = [
+  'public/i-129f.pdf',
+  'public/forms/i-129f.pdf',
+  'public/us/i-129f.pdf',
+];
 
-function getCookie(req, name) {
-  const raw = req.headers.get('cookie') || '';
-  const found = raw.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
-  return found ? decodeURIComponent(found.split('=')[1]) : null;
-}
-
-async function getLatestFormData(request) {
-  try {
-    const token = getCookie(request, 'liason_token');
-    if (!token || !process.env.JWT_SECRET) return null;
-
-    const { payload } = await jose.jwtVerify(
-      token,
-      new TextEncoder().encode(process.env.JWT_SECRET)
-    );
-    const userId = payload?.sub;
-    if (!userId) return null;
-
-    const rows = await sql`
-      SELECT data
-      FROM i129f_forms 
-      WHERE user_id = ${userId}
-      ORDER BY updated_at DESC NULLS LAST
-      LIMIT 1
-    `;
-    return rows[0]?.data ?? null;
-  } catch {
-    return null;
+async function resolveTemplatePath() {
+  for (const rel of CANDIDATE_PDFS) {
+    const p = path.join(process.cwd(), rel);
+    try { await access(p, FS.R_OK); return p; } catch {}
   }
+  return path.join(process.cwd(), CANDIDATE_PDFS[0]);
 }
 
-export async function GET(request) {
-  try {
-    const templateBytes = await readFile(TEMPLATE_PATH);
-    const pdfDoc = await PDFDocument.load(templateBytes, { ignoreEncryption: true });
+async function loadTemplateBytes() {
+  const templatePath = await resolveTemplatePath();
+  const bytes = await readFile(templatePath);
+  return { templatePath, bytes };
+}
 
-    const form = pdfDoc.getForm();
-    const data = (await getLatestFormData(request)) || {};
+function wantsDownload(searchParams) {
+  const raw = (searchParams.get('download') || '').toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes';
+}
 
-    // Fill form fields from saved data
-    for (const f of form.getFields()) {
-      const name = f.getName();
-      let val = getByPath(data, name);
-      if (val !== undefined) fillField(f, val);
+function pdfResponse(buffer, filename) {
+  return new NextResponse(buffer, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+// GET /api/i129f
+// - Default: returns JSON of the saved draft for the logged-in user.
+// - If ?download=1: returns a filled PDF (or blank template as fallback).
+export async function GET(req) {
+  const url = new URL(req.url);
+  const download = wantsDownload(url.searchParams);
+
+  if (download) {
+    // This endpoint exists for backward compatibility (old links used /api/i129f?download=1)
+    const { templatePath, bytes } = await loadTemplateBytes();
+
+    // Try to fill from saved DB data if available
+    try {
+      const user = await getUserFromCookie(req);
+      if (user?.id) {
+        const rows = await sql`
+          SELECT data
+          FROM i129f_entries
+          WHERE user_id = ${user.id}
+          LIMIT 1
+        `;
+        const data = rows[0]?.data ?? null;
+        if (data && typeof data === 'object' && Object.keys(data).length) {
+          try {
+            const filled = await fillI129FPdf(data, { templatePath });
+            return pdfResponse(filled, 'i-129f-filled.pdf');
+          } catch (e) {
+            console.error('[i129f GET download] fill failed; returning blank template:', e);
+          }
+        }
+      }
+    } catch (e) {
+      // ignore and fall through to blank
     }
 
-    // Flatten form
-    form.flatten();
-    
-    // Generate PDF
-    const out = await pdfDoc.save();
-    return new NextResponse(out, {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="i-129f-filled.pdf"',
-        'Cache-Control': 'no-store',
-      },
+    return pdfResponse(bytes, 'i-129f.pdf');
+  }
+
+  // JSON mode: require login
+  try {
+    const user = await requireAuth(req);
+    const rows = await sql`
+      SELECT data, updated_at
+      FROM i129f_entries
+      WHERE user_id = ${user.id}
+      LIMIT 1
+    `;
+
+    return NextResponse.json({
+      ok: true,
+      data: rows[0]?.data ?? {},
+      updated_at: rows[0]?.updated_at ?? null,
     });
-  } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+  } catch (err) {
+    const msg = String(err?.message || err);
+    const status = msg.includes('no-jwt') || msg.includes('no-user') ? 401 : 500;
+    return NextResponse.json({ ok: false, error: msg }, { status });
   }
 }
