@@ -134,6 +134,7 @@ const NumCtx = createContext({ show:false, next:()=>null });
 export default function I129fWizard() {
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [form, setForm] = useState(EMPTY);
 
   // compact numbers with ?num=1
@@ -219,6 +220,64 @@ export default function I129fWizard() {
     finally{ setBusy(false); }
   }
 
+
+  async function downloadPdf(){
+    setDownloading(true);
+    try{
+      const normalized=structuredClone(form);
+      const datePaths=[
+        'petitioner.dob',
+        'petitioner.natzDate',
+        'beneficiary.dob',
+        'beneficiary.arrivalDate',
+        'beneficiary.statusExpires',
+        'beneficiary.passportExpiration',
+        'preparer.signDate',
+        'interpreter.signDate',
+      ];
+      datePaths.forEach(p=>{ const v=getPath(normalized,p); if(v) setPath(normalized,p,normalizeUs(v)); });
+      (normalized.petitioner?.parents||[]).forEach((p,i)=>{
+        if(p?.dob) setPath(normalized,`petitioner.parents.${i}.dob`,normalizeUs(p.dob));
+        if(p?.deathDate) setPath(normalized,`petitioner.parents.${i}.deathDate`,normalizeUs(p.deathDate));
+      });
+      (normalized.beneficiary?.parents||[]).forEach((p,i)=>{
+        if(p?.dob) setPath(normalized,`beneficiary.parents.${i}.dob`,normalizeUs(p.dob));
+        if(p?.deathDate) setPath(normalized,`beneficiary.parents.${i}.deathDate`,normalizeUs(p.deathDate));
+      });
+      (normalized.physicalAddresses||[]).forEach((a,i)=>{ if(a?.from) setPath(normalized,`physicalAddresses.${i}.from`,normalizeUs(a.from)); if(a?.to) setPath(normalized,`physicalAddresses.${i}.to`,normalizeUs(a.to)); });
+      (normalized.employment||[]).forEach((e,i)=>{ if(e?.from) setPath(normalized,`employment.${i}.from`,normalizeUs(e.from)); if(e?.to) setPath(normalized,`employment.${i}.to`,normalizeUs(e.to)); });
+      (normalized.beneficiary?.employment||[]).forEach((e,i)=>{ if(e?.from) setPath(normalized,`beneficiary.employment.${i}.from`,normalizeUs(e.from)); if(e?.to) setPath(normalized,`beneficiary.employment.${i}.to`,normalizeUs(e.to)); });
+      spillExtrasIntoPart8(normalized);
+
+      const resp = await fetch('/api/i129f/pdf',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'include',
+        body:JSON.stringify({data:normalized}),
+      });
+
+      const ct = (resp.headers.get('content-type')||'').toLowerCase();
+      if(!resp.ok || !ct.includes('application/pdf')){
+        const txt = await resp.text().catch(()=> '');
+        throw new Error(txt || `Download failed (status ${resp.status})`);
+      }
+
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'i-129f-filled.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch(e){
+      alert('Download failed. If you are logged in, try Save progress first and then use the GET download.');
+      console.error(e);
+    }
+    finally{ setDownloading(false); }
+  }
+
   function next(){ setStep(s=>Math.min(s+1,SECTIONS.length-1)); }
   function back(){ setStep(s=>Math.max(s-1,0)); }
 
@@ -262,8 +321,11 @@ export default function I129fWizard() {
             <p className="small">
               Use <a href="/api/i129f/pdf-debug" target="_blank" rel="noreferrer">PDF debug overlay</a>.
             </p>
-            <div>
-              <a className="btn btn-primary" href="/api/i129f/pdf">Download I-129F (PDF)</a>
+            <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+              <button type="button" className="btn btn-primary" onClick={downloadPdf} disabled={downloading}>
+                {downloading ? 'Downloading…' : 'Download I-129F (PDF)'}
+              </button>
+              <a className="btn" href="/api/i129f/pdf">Download from saved draft (GET)</a>
             </div>
           </section>
         )}
