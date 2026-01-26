@@ -1,108 +1,78 @@
+// app/api/i129f/route.js
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import { NextResponse } from 'next/server';
-import path from 'node:path';
-import { readFile, access } from 'node:fs/promises';
-import { constants as FS } from 'node:fs';
 
-import sql from '@/lib/db';
-import { getUserFromCookie, requireAuth } from '@/lib/auth';
-import { fillI129FPdf } from '@/lib/pdf/fillI129F';
+// This route is kept for backward-compatibility.
+// It fetches the user's saved draft from /api/i129f/load
+// then POSTs it to /api/i129f/pdf to generate the filled PDF.
 
-const CANDIDATE_PDFS = [
-  'public/i-129f.pdf',
-  'public/forms/i-129f.pdf',
-  'public/us/i-129f.pdf',
-];
-
-async function resolveTemplatePath() {
-  for (const rel of CANDIDATE_PDFS) {
-    const p = path.join(process.cwd(), rel);
-    try { await access(p, FS.R_OK); return p; } catch {}
-  }
-  return path.join(process.cwd(), CANDIDATE_PDFS[0]);
-}
-
-async function loadTemplateBytes() {
-  const templatePath = await resolveTemplatePath();
-  const bytes = await readFile(templatePath);
-  return { templatePath, bytes };
-}
-
-function wantsDownload(searchParams) {
-  const raw = (searchParams.get('download') || '').toLowerCase();
-  return raw === '1' || raw === 'true' || raw === 'yes';
-}
-
-function pdfResponse(buffer, filename) {
-  return new NextResponse(buffer, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${filename}"`,
-      'Cache-Control': 'no-store',
-    },
-  });
-}
-
-// GET /api/i129f
-// - Default: returns JSON of the saved draft for the logged-in user.
-// - If ?download=1: returns a filled PDF (or blank template as fallback).
 export async function GET(req) {
-  const url = new URL(req.url);
-  const download = wantsDownload(url.searchParams);
+  try {
+    const origin = new URL(req.url).origin;
+    const cookie = req.headers.get('cookie') || '';
 
-  if (download) {
-    // This endpoint exists for backward compatibility (old links used /api/i129f?download=1)
-    const { templatePath, bytes } = await loadTemplateBytes();
+    const loadRes = await fetch(`${origin}/api/i129f/load`, {
+      method: 'GET',
+      headers: { cookie },
+      cache: 'no-store',
+    });
 
-    // Try to fill from saved DB data if available
-    try {
-      const user = await getUserFromCookie(req);
-      if (user?.id) {
-        const rows = await sql`
-          SELECT data
-          FROM i129f_entries
-          WHERE user_id = ${user.id}
-          LIMIT 1
-        `;
-        const data = rows[0]?.data ?? null;
-        if (data && typeof data === 'object' && Object.keys(data).length) {
-          try {
-            const filled = await fillI129FPdf(data, { templatePath });
-            return pdfResponse(filled, 'i-129f-filled.pdf');
-          } catch (e) {
-            console.error('[i129f GET download] fill failed; returning blank template:', e);
-          }
-        }
-      }
-    } catch (e) {
-      // ignore and fall through to blank
+    const loadJson = await loadRes.json().catch(() => ({}));
+    const data = loadJson?.data ?? loadJson?.form?.data ?? loadJson ?? {};
+
+    const pdfRes = await fetch(`${origin}/api/i129f/pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', cookie },
+      body: JSON.stringify({ data }),
+      cache: 'no-store',
+    });
+
+    const buf = await pdfRes.arrayBuffer();
+    const headers = new Headers(pdfRes.headers);
+
+    // Ensure download filename if upstream didn't set it
+    if (!headers.get('content-disposition')) {
+      headers.set('Content-Disposition', 'attachment; filename="i-129f-filled.pdf"');
     }
 
-    return pdfResponse(bytes, 'i-129f.pdf');
+    return new NextResponse(buf, { status: pdfRes.status, headers });
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e?.message || 'Failed generating PDF' },
+      { status: 500 }
+    );
   }
+}
 
-  // JSON mode: require login
+// Optional: POST /api/i129f also forwards to /api/i129f/pdf
+export async function POST(req) {
   try {
-    const user = await requireAuth(req);
-    const rows = await sql`
-      SELECT data, updated_at
-      FROM i129f_entries
-      WHERE user_id = ${user.id}
-      LIMIT 1
-    `;
+    const origin = new URL(req.url).origin;
+    const cookie = req.headers.get('cookie') || '';
+    const body = await req.text();
 
-    return NextResponse.json({
-      ok: true,
-      data: rows[0]?.data ?? {},
-      updated_at: rows[0]?.updated_at ?? null,
+    const pdfRes = await fetch(`${origin}/api/i129f/pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': req.headers.get('content-type') || 'application/json', cookie },
+      body,
+      cache: 'no-store',
     });
-  } catch (err) {
-    const msg = String(err?.message || err);
-    const status = msg.includes('no-jwt') || msg.includes('no-user') ? 401 : 500;
-    return NextResponse.json({ ok: false, error: msg }, { status });
+
+    const buf = await pdfRes.arrayBuffer();
+    const headers = new Headers(pdfRes.headers);
+
+    if (!headers.get('content-disposition')) {
+      headers.set('Content-Disposition', 'attachment; filename="i-129f-filled.pdf"');
+    }
+
+    return new NextResponse(buf, { status: pdfRes.status, headers });
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e?.message || 'Failed generating PDF' },
+      { status: 500 }
+    );
   }
 }
