@@ -934,7 +934,7 @@ function Review({ form, onSave, busy }) {
             {busy ? 'Saving…' : 'Save'}
           </button>
 
-          <a className="btn" href="/api/i129f" target="_blank" rel="noreferrer">
+          <a className="btn" href="/api/i129f/pdf" target="_blank" rel="noreferrer">
             Download I-129F (PDF)
           </a>
 
