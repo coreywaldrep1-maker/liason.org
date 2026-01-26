@@ -310,10 +310,10 @@ export default function I129fWizard() {
           <section style={{display:'grid', gap:10}}>
             <h3 style={{margin:0}}>Review & download</h3>
             <p className="small">
-              Use <a href="/api/i129f/pdf-debug" target="_blank" rel="noreferrer">PDF debug overlay</a>.
+              Use <a href="/api/i129f-debug" target="_blank" rel="noreferrer">PDF debug overlay</a>.
             </p>
             <div>
-              <a className="btn btn-primary" href="/api/i129f/pdf">Download I-129F (PDF)</a>
+              <a className="btn btn-primary" href="/api/i129f">Download I-129F (PDF)</a>
             </div>
           </section>
         )}
