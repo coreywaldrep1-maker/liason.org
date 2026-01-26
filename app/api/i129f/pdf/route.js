@@ -1,96 +1,96 @@
 // app/api/i129f/pdf/route.js
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-import { NextResponse } from 'next/server';
-import path from 'node:path';
-import { readFile, access } from 'node:fs/promises';
-import { constants as fsConstants } from 'node:fs';
-import { PDFDocument, StandardFonts } from 'pdf-lib';
+import { NextResponse } from "next/server";
+import { fillI129FPdf } from "@/lib/pdf/fillI129F";
 
-import sql from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
-import { applyI129fMapping } from '@/lib/i129f-mapping';
-
-const CANDIDATE_PDFS = [
-  path.join(process.cwd(), 'public', 'i-129f.pdf'),
-  path.join(process.cwd(), 'public', 'forms', 'i-129f.pdf'),
-  path.join(process.cwd(), 'public', 'forms', 'i-129f (81).pdf'),
-];
-
-async function readFirstExisting(paths) {
-  for (const p of paths) {
-    try {
-      await access(p, fsConstants.F_OK);
-      return readFile(p);
-    } catch {
-      // keep trying
-    }
-  }
-  throw new Error(`I-129F template PDF not found. Looked in: ${paths.join(', ')}`);
-}
-
-async function loadSavedFromDb(req) {
-  const user = await requireAuth(req);
-  const rows = await sql`SELECT data FROM i129f_entries WHERE user_id = ${user.id} LIMIT 1`;
-  return rows?.[0]?.data ?? {};
-}
-
-async function buildFilledPdfBytes(saved, { flatten = false } = {}) {
-  const pdfBytes = await readFirstExisting(CANDIDATE_PDFS);
-  const pdfDoc = await PDFDocument.load(pdfBytes);
-  const form = pdfDoc.getForm();
-  const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-  applyI129fMapping(saved, form);
-
-  // Force appearances so Chrome/Preview show the values
-  form.updateFieldAppearances(helv);
-
-  if (flatten) {
-    form.flatten();
-  }
-
-  return pdfDoc.save();
-}
-
-function asAttachment(pdfBytes, filename = 'i-129f-filled.pdf') {
-  return new NextResponse(pdfBytes, {
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${filename}"`,
-      'Cache-Control': 'no-store',
-    },
-  });
-}
-
-// GET is what your wizard link uses: <a href="/api/i129f/pdf">
-export async function GET(req) {
+async function fetchJsonOrNull(url, cookie) {
   try {
-    const saved = await loadSavedFromDb(req);
-    const flatten = req.nextUrl.searchParams.get('flatten') === '1' || req.nextUrl.searchParams.get('flatten') === 'true';
+    const res = await fetch(url, { headers: cookie ? { cookie } : {}, cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json().catch(() => null);
+  } catch {
+    return null;
+  }
+}
 
-    const out = await buildFilledPdfBytes(saved, { flatten });
-    return asAttachment(out);
-  } catch (e) {
+function extractSaved(json) {
+  if (!json || typeof json !== "object") return null;
+  if (json.data && typeof json.data === "object") return json.data;
+  if (json.saved && typeof json.saved === "object") return json.saved;
+  if (json.i129f && typeof json.i129f === "object") return json.i129f;
+  if (json.form && typeof json.form === "object") return json.form;
+  return json;
+}
+
+async function loadSavedForSession(request) {
+  const cookie = request.headers.get("cookie") || "";
+  const origin = new URL(request.url).origin;
+
+  // Prefer the same endpoints your wizard uses
+  const j1 = await fetchJsonOrNull(`${origin}/api/i129f/load`, cookie);
+  const s1 = extractSaved(j1);
+  if (s1) return s1;
+
+  const j2 = await fetchJsonOrNull(`${origin}/api/i129f/data`, cookie);
+  const s2 = extractSaved(j2);
+  if (s2) return s2;
+
+  return null;
+}
+
+// ✅ GET is what your wizard link uses: <a href="/api/i129f/pdf">
+export async function GET(request) {
+  try {
+    const saved = await loadSavedForSession(request);
+    if (!saved) {
+      return NextResponse.json(
+        { ok: false, error: "No saved data found for this session. Save the form first." },
+        { status: 404 }
+      );
+    }
+
+    const flatten = request.nextUrl.searchParams.get("flatten") === "1";
+    const pdfBytes = await fillI129FPdf(saved, { flatten });
+
+    return new NextResponse(pdfBytes, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": 'attachment; filename="i-129f-filled.pdf"',
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (err) {
     return NextResponse.json(
-      { ok: false, error: e?.message || 'Failed to generate PDF' },
+      { ok: false, error: err?.message || "PDF generation failed" },
       { status: 500 }
     );
   }
 }
 
-// POST (optional) if you ever want to generate from provided data
+// Optional POST support if you still want it
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
-    const saved = body?.data ?? body ?? {};
+    const saved = body?.data || body;
 
     const flatten = Boolean(body?.flatten);
-    const out = await buildFilledPdfBytes(saved, { flatten });
-    return asAttachment(out);
-  } catch (e) {
+    const pdfBytes = await fillI129FPdf(saved, { flatten });
+
+    return new NextResponse(pdfBytes, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": 'attachment; filename="i-129f-filled.pdf"',
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (err) {
     return NextResponse.json(
-      { ok: false, error: e?.message || 'Failed to generate PDF' },
+      { ok: false, error: err?.message || "PDF generation failed" },
       { status: 500 }
     );
   }
