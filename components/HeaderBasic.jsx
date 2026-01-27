@@ -59,12 +59,7 @@ export default function HeaderBasic() {
               }}
             >
               <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-                <path
-                  d="M2 4h14M2 9h14M2 14h14"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
+                <path d="M2 4h14M2 9h14M2 14h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </button>
             <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -72,7 +67,7 @@ export default function HeaderBasic() {
             </div>
           </div>
 
-          {/* CENTER: logo + brand (hard-clamped size) */}
+          {/* CENTER: logo + brand */}
           <Link
             href="/"
             aria-label="Go to homepage"
@@ -91,14 +86,14 @@ export default function HeaderBasic() {
             <img
               src="/logo.svg"
               alt="Liason logo"
-              width={112}
-              height={28}
-              style={{ height: 28, width: 'auto', maxWidth: 160, display: 'block' }}
+              width={140}
+              height={34}
+              style={{ height: 34, width: 'auto', maxWidth: 200, display: 'block' }}
             />
-            <span className="truncate font-semibold tracking-tight">Liason</span>
+            <span className="truncate text-xl font-semibold tracking-tight">Liason</span>
           </Link>
 
-          {/* RIGHT: auth/user icon (toggles login/logout internally) */}
+          {/* RIGHT: profile icon */}
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <AuthWidget />
           </div>
