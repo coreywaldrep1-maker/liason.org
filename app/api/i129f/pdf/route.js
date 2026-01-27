@@ -21,6 +21,9 @@ async function fetchJsonOrNull(url, cookie) {
 
 function extractSaved(json) {
   if (!json || typeof json !== "object") return null;
+  // If endpoint returned a standard {ok:false,...} shape, treat as no data.
+  if (Object.prototype.hasOwnProperty.call(json, "ok") && json.ok === false) return null;
+  if (json.ok === true && json.data && typeof json.data === "object") return json.data;
   if (json.data && typeof json.data === "object") return json.data;
   if (json.saved && typeof json.saved === "object") return json.saved;
   if (json.i129f && typeof json.i129f === "object") return json.i129f;
@@ -45,17 +48,22 @@ async function loadSavedForSession(request) {
 }
 
 async function resolveTemplateBytes() {
-  // Prefer your renamed working template location(s)
+  // IMPORTANT:
+  // Your mapping file (lib/i129f-mapping.js) targets the *renamed* AcroForm field names.
+  // The PDF at /public/i-129f.pdf in this repo has those renamed fields.
+  // The PDF at /public/forms/i-129f.pdf has the *original* USCIS field names (Pt1Line..., etc.)
+  // and will result in a blank filled PDF.
   const candidates = [
-    path.join(process.cwd(), "public", "forms", "i-129f.pdf"),
     path.join(process.cwd(), "public", "i-129f.pdf"),
+    path.join(process.cwd(), "public", "forms", "i-129f.pdf"),
     path.join(process.cwd(), "public", "forms", "i-129f (81).pdf"),
+    path.join(process.cwd(), "public", "us", "i-129f.pdf"),
   ];
 
   for (const p of candidates) {
     try {
       const bytes = await readFile(p);
-      return bytes;
+      return { bytes, usedPath: p };
     } catch {}
   }
 
@@ -75,7 +83,7 @@ export async function GET(request) {
 
     const flatten = request.nextUrl.searchParams.get("flatten") === "1";
 
-    const templateBytes = await resolveTemplateBytes();
+    const { bytes: templateBytes, usedPath } = await resolveTemplateBytes();
     const pdfDoc = await PDFDocument.load(templateBytes, {
       ignoreEncryption: true,
       updateMetadata: true,
@@ -104,6 +112,8 @@ export async function GET(request) {
         "Content-Type": "application/pdf",
         "Content-Disposition": 'attachment; filename="i-129f-filled.pdf"',
         "Cache-Control": "no-store",
+        // Helpful when debugging which template was used on Vercel
+        "X-I129F-Template": path.relative(process.cwd(), usedPath),
       },
     });
   } catch (err) {
@@ -120,7 +130,7 @@ export async function POST(request) {
     const body = await request.json().catch(() => ({}));
     const saved = body?.data || body || {};
 
-    const templateBytes = await resolveTemplateBytes();
+    const { bytes: templateBytes, usedPath } = await resolveTemplateBytes();
     const pdfDoc = await PDFDocument.load(templateBytes, {
       ignoreEncryption: true,
       updateMetadata: true,
@@ -142,6 +152,7 @@ export async function POST(request) {
         "Content-Type": "application/pdf",
         "Content-Disposition": 'attachment; filename="i-129f-filled.pdf"',
         "Cache-Control": "no-store",
+        "X-I129F-Template": path.relative(process.cwd(), usedPath),
       },
     });
   } catch (err) {
