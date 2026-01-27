@@ -1,42 +1,32 @@
 // app/api/i129f/data/route.js
-export const runtime = 'edge';
+// NOTE: This endpoint is used by the wizard to rehydrate saved data on reload.
+// It must read from the same storage as /api/i129f/save and /api/i129f/load.
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import { neon } from '@neondatabase/serverless';
-import * as jose from 'jose';
+import { sql } from '@/lib/db';
+import { requireAuth } from '@/lib/auth';
 
-const sql = neon(process.env.DATABASE_URL);
-
-function getCookie(req, name) {
-  const raw = req.headers.get('cookie') || '';
-  const found = raw.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
-  return found ? decodeURIComponent(found.split('=')[1]) : null;
-}
-
-export async function GET(request) {
+export async function GET(req) {
   try {
-    const token = getCookie(request, 'liason_token');
-    if (!token || !process.env.JWT_SECRET) {
-      return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401 });
-    }
-    const { payload } = await jose.jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET));
-    const userId = payload?.sub;
-    if (!userId) return NextResponse.json({ ok: false, error: 'No user in token' }, { status: 401 });
+    const user = await requireAuth(req);
 
     const rows = await sql`
       SELECT data, updated_at
-      FROM i129f_forms
-      WHERE user_id = ${userId}
-      ORDER BY updated_at DESC NULLS LAST
+      FROM i129f_entries
+      WHERE user_id = ${user.id}
       LIMIT 1
     `;
-    return NextResponse.json({
-      ok: true,
-      data: rows[0]?.data ?? {},
-      updated_at: rows[0]?.updated_at ?? null
-    });
+
+    const row = rows?.[0];
+    const data = row?.data ?? {};
+    const updatedAt = row?.updated_at ?? null;
+
+    // Keep both keys for backward compatibility with older client code.
+    return NextResponse.json({ ok: true, data, updatedAt, updated_at: updatedAt });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 200 });
   }
 }
-      
