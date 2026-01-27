@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from 'react';
 
+// Store originals per *text node* (not per parent element).
+// This avoids bugs where multiple text nodes share the same parent (e.g. "1", ".", " Part 1")
+// and all get overwritten with the same translation.
+const ORIGINAL_TEXT = new WeakMap();
+
 function getCookie(name) {
   if (typeof document === 'undefined') return '';
   const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.*+?^${}()|[\]\\])/g, '\\$1') + '=([^;]*)'));
@@ -30,9 +35,12 @@ function collectTextNodes() {
         if (p.closest('[data-i18n-skip]')) return NodeFilter.FILTER_REJECT;
 
         const raw = node.nodeValue ?? '';
-        // collapse whitespace; ignore tiny or pure-whitespace nodes
         const txt = raw.replace(/\s+/g, ' ').trim();
         if (!txt) return NodeFilter.FILTER_REJECT;
+
+        // Avoid translating UI numbers like "1", "2.", etc.
+        if (/^\d+[.)]?$/.test(txt)) return NodeFilter.FILTER_REJECT;
+
         // avoid translating form values/inputs; we only do plain text content
         if (p.closest('input,textarea,select')) return NodeFilter.FILTER_REJECT;
 
@@ -47,16 +55,16 @@ function collectTextNodes() {
 
 /** Build translation request arrays and a mapping back to nodes. */
 function prepareBatches(nodes) {
-  // Remember originals once so we can safely toggle languages
+  // Remember originals once so we can safely toggle languages.
+  // NOTE: We store originals on the Text node itself (via WeakMap), not on the parent element.
   for (const n of nodes) {
-    if (!n.parentElement?.dataset) continue;
-    if (!n.parentElement.dataset.i18nOrig) {
-      const orig = (n.nodeValue ?? '').replace(/\s+/g, ' ');
-      n.parentElement.dataset.i18nOrig = orig;
+    if (!ORIGINAL_TEXT.has(n)) {
+      ORIGINAL_TEXT.set(n, (n.nodeValue ?? '').replace(/\s+/g, ' '));
     }
   }
 
-  const originals = nodes.map(n => n.parentElement?.dataset?.i18nOrig || (n.nodeValue ?? '').replace(/\s+/g, ' '));
+  const originals = nodes.map((n) => (ORIGINAL_TEXT.get(n) ?? (n.nodeValue ?? '')).replace(/\s+/g, ' '));
+
   // Deduplicate to save tokens
   const order = [];
   const seen = new Set();
@@ -69,7 +77,7 @@ function prepareBatches(nodes) {
     }
   }
   const indexMap = new Map(order.map((s, i) => [s, i]));
-  const positions = originals.map(s => indexMap.get(s.trim() || '') ?? -1);
+  const positions = originals.map((s) => indexMap.get(s.trim() || '') ?? -1);
 
   return { order, positions };
 }
@@ -98,17 +106,16 @@ function applyTranslations(nodes, positions, dedupedTranslations) {
   });
 }
 
-/** Restore originals (English) from data attributes */
+/** Restore originals (English) */
 function restoreOriginals(nodes) {
-  nodes.forEach(node => {
-    const orig = node.parentElement?.dataset?.i18nOrig;
+  nodes.forEach((node) => {
+    const orig = ORIGINAL_TEXT.get(node);
     if (typeof orig === 'string') node.nodeValue = orig;
   });
 }
 
 /** Main translate-or-restore flow */
 async function translatePageTo(targetLang) {
-  // Only operate inside the marked content
   const nodes = collectTextNodes();
   if (!nodes.length) return;
 
@@ -120,7 +127,6 @@ async function translatePageTo(targetLang) {
   const { order, positions } = prepareBatches(nodes);
   if (!order.length) return;
 
-  // We consider English our source; DeepL can handle auto, but explicit is fine.
   const translations = await translateBatch(order, 'EN', targetLang.toUpperCase());
   applyTranslations(nodes, positions, translations);
 }
@@ -128,7 +134,6 @@ async function translatePageTo(targetLang) {
 export default function LanguageSwitcher() {
   const [lang, setLang] = useState('en');
 
-  // Initialize from cookie & auto-translate on load (without reloading the whole page)
   useEffect(() => {
     const current = getCookie('liason_lang') || 'en';
     setLang(current);
@@ -139,18 +144,11 @@ export default function LanguageSwitcher() {
     const next = e.target.value;
     setLang(next);
     await setLangCookie(next);
-    // translate in-place (no full reload)
     await translatePageTo(next);
   }
 
   return (
-    <select
-      value={lang}
-      onChange={onChange}
-      aria-label="Language"
-      className="select"
-      // keep your existing styling; no width/layout changes
-    >
+    <select value={lang} onChange={onChange} aria-label="Language" className="select">
       <option value="en">English</option>
       <option value="es">Español</option>
       <option value="fr">Français</option>
