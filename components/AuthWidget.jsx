@@ -2,24 +2,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-function initialsFromEmail(email = '') {
-  const s = String(email || '').trim();
-  if (!s) return '';
-  const left = s.split('@')[0] || '';
-  const parts = left
-    .replace(/[^a-zA-Z0-9]+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(Boolean);
-
-  if (parts.length === 0) return left.slice(0, 2).toUpperCase();
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
-
-function UserIcon({ size = 18 }) {
+function PersonIcon({ size = 18 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
       <path
@@ -52,7 +37,6 @@ export default function AuthWidget() {
     };
   }, []);
 
-  // Close on outside click / escape
   useEffect(() => {
     function onDocClick(e) {
       const t = e.target;
@@ -71,10 +55,6 @@ export default function AuthWidget() {
     };
   }, []);
 
-  const email = user?.email || '';
-  const initials = useMemo(() => initialsFromEmail(email), [email]);
-  const avatarUrl = user?.avatarUrl || user?.avatar_url || user?.photoUrl || user?.photo_url || '';
-
   async function logout() {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
@@ -83,7 +63,6 @@ export default function AuthWidget() {
     }
     setUser(null);
     setOpen(false);
-    // hard refresh to clear any gated / cached UI
     window.location.href = '/';
   }
 
@@ -103,16 +82,25 @@ export default function AuthWidget() {
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          overflow: 'hidden',
+          position: 'relative',
         }}
       >
-        {avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={avatarUrl} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        ) : user ? (
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{initials || 'ME'}</span>
-        ) : (
-          <UserIcon size={18} />
+        <PersonIcon size={18} />
+        {/* small dot if signed in */}
+        {user && (
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              right: 4,
+              bottom: 4,
+              width: 8,
+              height: 8,
+              borderRadius: 999,
+              background: '#22c55e',
+              border: '2px solid #fff',
+            }}
+          />
         )}
       </button>
 
@@ -125,7 +113,7 @@ export default function AuthWidget() {
             position: 'absolute',
             top: 44,
             right: 0,
-            width: 220,
+            width: 240,
             background: '#fff',
             border: '1px solid #e2e8f0',
             borderRadius: 12,
@@ -137,20 +125,22 @@ export default function AuthWidget() {
           {user ? (
             <>
               <div style={{ padding: '6px 8px 8px 8px' }}>
-                <div style={{ fontSize: 12, color: '#475569' }}>Signed in as</div>
+                <div style={{ fontSize: 12, color: '#475569' }}>Signed in</div>
                 <div className="truncate" style={{ fontSize: 13, fontWeight: 600 }}>
-                  {email}
+                  {user?.email || 'User'}
                 </div>
               </div>
               <div style={{ height: 1, background: '#e2e8f0', margin: '6px 0' }} />
+
               <Link
-                href="/account"
+                href="/settings"
                 className="btn"
                 style={{ width: '100%', justifyContent: 'flex-start' }}
                 onClick={() => setOpen(false)}
               >
-                Account
+                Settings
               </Link>
+
               <button
                 type="button"
                 className="btn"
