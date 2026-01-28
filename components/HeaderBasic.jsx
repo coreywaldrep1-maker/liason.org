@@ -26,16 +26,19 @@ export default function HeaderBasic() {
     return () => window.removeEventListener('keydown', onEsc);
   }, []);
 
+  // ~4x larger than the old 34px: target 136px (but clamp so mobile doesn't explode)
+  const HEADER_H = 'clamp(84px, 10vw, 180px)';
+  const LOGO_H = 'clamp(72px, 9vw, 136px)';
+
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-white">
       <div className="mx-auto max-w-screen-2xl px-4">
-        {/* FORCE HORIZONTAL ROW */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            height: 56,
+            height: HEADER_H,
             position: 'relative',
             width: '100%',
             gap: 12,
@@ -62,6 +65,7 @@ export default function HeaderBasic() {
                 <path d="M2 4h14M2 9h14M2 14h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </button>
+
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <LanguageSwitcher />
             </div>
@@ -77,20 +81,26 @@ export default function HeaderBasic() {
               transform: 'translateX(-50%)',
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
+              gap: 12,
               minWidth: 0,
               textDecoration: 'none',
               color: 'inherit',
+              padding: '6px 0',
             }}
           >
             <img
               src="/logo.svg"
               alt="Liason logo"
-              width={140}
-              height={34}
-              style={{ height: 34, width: 'auto', maxWidth: 200, display: 'block' }}
+              width={400}
+              height={160}
+              style={{
+                height: LOGO_H,
+                width: 'auto',
+                maxWidth: 'min(520px, 55vw)',
+                display: 'block',
+              }}
             />
-            <span className="truncate text-xl font-semibold tracking-tight">Liason</span>
+            <span className="truncate text-3xl font-semibold tracking-tight">Liason</span>
           </Link>
 
           {/* RIGHT: profile icon */}
