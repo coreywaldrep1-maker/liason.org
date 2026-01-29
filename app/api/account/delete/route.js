@@ -19,15 +19,38 @@ export async function POST(req) {
       // ignore if table doesn't exist
     }
 
-    // Delete user account
+    // Remove paid entitlements (if present)
+    try {
+      await sql`DELETE FROM user_entitlements WHERE user_id = ${user.id}`;
+    } catch {
+      // ignore if table doesn't exist
+    }
+
+    // Delete password resets (if exists)
+    try {
+      await sql`DELETE FROM password_resets WHERE user_id = ${user.id}`;
+    } catch {
+      // ignore
+    }
+
+    // Delete user record
     await sql`DELETE FROM users WHERE id = ${user.id}`;
 
-    // Clear auth + payment cookies
+    // Clear auth cookie
     clearAuthCookie(res);
-    res.headers.append('Set-Cookie', 'i129f_paid=; Path=/; Max-Age=0; SameSite=Lax;');
+
+    // Clear any payment cookies
+    res.headers.append(
+      'Set-Cookie',
+      `i129f_paid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${process.env.VERCEL ? '; Secure' : ''}`
+    );
+    res.headers.append(
+      'Set-Cookie',
+      `liason_paid_i129f=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${process.env.VERCEL ? '; Secure' : ''}`
+    );
 
     return res;
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 200 });
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 401 });
   }
 }
