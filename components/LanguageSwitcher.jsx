@@ -1,15 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 // Store originals per *text node* (not per parent element).
-// This avoids bugs where multiple text nodes share the same parent (e.g. "1", ".", " Part 1")
-// and all get overwritten with the same translation.
+// This avoids bugs where multiple text nodes share the same parent.
 const ORIGINAL_TEXT = new WeakMap();
 
 function getCookie(name) {
   if (typeof document === 'undefined') return '';
-  const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.*+?^${}()|[\]\\])/g, '\\$1') + '=([^;]*)'));
+  const m = document.cookie.match(
+    new RegExp('(?:^|; )' + name.replace(/([.*+?^${}()|[\]\\])/g, '\\$1') + '=([^;]*)')
+  );
   return m ? decodeURIComponent(m[1]) : '';
 }
 
@@ -17,11 +19,11 @@ async function setLangCookie(code) {
   await fetch('/api/i18n/set', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lang: code })
+    body: JSON.stringify({ lang: code }),
   });
 }
 
-/** Collect all text nodes under [data-i18n-scan], skipping script/style/noscript and [data-i18n-skip] subtrees. */
+/** Collect all text nodes under [data-i18n-scan], skipping script/style/noscript and [data-i18n-skip]. */
 function collectTextNodes() {
   const roots = Array.from(document.querySelectorAll('[data-i18n-scan]'));
   const nodes = [];
@@ -41,22 +43,20 @@ function collectTextNodes() {
         // Avoid translating UI numbers like "1", "2.", etc.
         if (/^\d+[.)]?$/.test(txt)) return NodeFilter.FILTER_REJECT;
 
-        // avoid translating form values/inputs; we only do plain text content
+        // avoid translating form values/inputs
         if (p.closest('input,textarea,select')) return NodeFilter.FILTER_REJECT;
 
         return NodeFilter.FILTER_ACCEPT;
-      }
+      },
     });
+
     let n;
     while ((n = walker.nextNode())) nodes.push(n);
   }
   return nodes;
 }
 
-/** Build translation request arrays and a mapping back to nodes. */
 function prepareBatches(nodes) {
-  // Remember originals once so we can safely toggle languages.
-  // NOTE: We store originals on the Text node itself (via WeakMap), not on the parent element.
   for (const n of nodes) {
     if (!ORIGINAL_TEXT.has(n)) {
       ORIGINAL_TEXT.set(n, (n.nodeValue ?? '').replace(/\s+/g, ' '));
@@ -65,7 +65,6 @@ function prepareBatches(nodes) {
 
   const originals = nodes.map((n) => (ORIGINAL_TEXT.get(n) ?? (n.nodeValue ?? '')).replace(/\s+/g, ' '));
 
-  // Deduplicate to save tokens
   const order = [];
   const seen = new Set();
   for (const s of originals) {
@@ -76,6 +75,7 @@ function prepareBatches(nodes) {
       order.push(key);
     }
   }
+
   const indexMap = new Map(order.map((s, i) => [s, i]));
   const positions = originals.map((s) => indexMap.get(s.trim() || '') ?? -1);
 
@@ -86,27 +86,24 @@ async function translateBatch(items, source, target) {
   const res = await fetch('/api/i18n/translate-batch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source, target, items })
+    body: JSON.stringify({ source, target, items }),
   });
+
   const json = await res.json().catch(() => ({ ok: false, error: 'bad json' }));
   if (!json.ok) throw new Error(json.error || 'translate failed');
   return json.translations || [];
 }
 
-/** Apply translations back to DOM nodes based on positions */
 function applyTranslations(nodes, positions, dedupedTranslations) {
   nodes.forEach((node, i) => {
     const pos = positions[i];
     if (pos >= 0) {
       const t = dedupedTranslations[pos];
-      if (typeof t === 'string' && t.length) {
-        node.nodeValue = t;
-      }
+      if (typeof t === 'string' && t.length) node.nodeValue = t;
     }
   });
 }
 
-/** Restore originals (English) */
 function restoreOriginals(nodes) {
   nodes.forEach((node) => {
     const orig = ORIGINAL_TEXT.get(node);
@@ -114,7 +111,6 @@ function restoreOriginals(nodes) {
   });
 }
 
-/** Main translate-or-restore flow */
 async function translatePageTo(targetLang) {
   const nodes = collectTextNodes();
   if (!nodes.length) return;
@@ -132,13 +128,23 @@ async function translatePageTo(targetLang) {
 }
 
 export default function LanguageSwitcher() {
+  const pathname = usePathname();
   const [lang, setLang] = useState('en');
 
+  // Initial load from cookie
   useEffect(() => {
     const current = getCookie('liason_lang') || 'en';
     setLang(current);
     translatePageTo(current).catch(() => {});
   }, []);
+
+  // ✅ Re-run translation after every route change
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      translatePageTo(lang).catch(() => {});
+    });
+    return () => cancelAnimationFrame(id);
+  }, [pathname, lang]);
 
   async function onChange(e) {
     const next = e.target.value;
