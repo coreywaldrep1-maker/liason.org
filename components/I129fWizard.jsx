@@ -948,7 +948,7 @@ function Review({ form, onSave, busy }) {
         <div className="small">
           This calls your server endpoint that merges your saved data into the PDF.
         </div>
-        <a className="btn" href="/api/i129f/download" target="_blank" rel="noreferrer">
+        <a className="btn" href="/api/i129f/pdf" target="_blank" rel="noreferrer">
           Download I-129F PDF
         </a>
       </div>
