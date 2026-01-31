@@ -8,8 +8,17 @@ import { requireAuth } from '@/lib/auth';
 export async function POST(req) {
   try {
     const user = await requireAuth(req);
-    const { data } = await req.json();
-    if (!data || typeof data !== 'object') {
+
+    const body = await req.json().catch(() => null);
+
+    // Accept either:
+    // 1) { data: { ...formObject } }
+    // 2) { ...formObject }  (older clients / copy-paste)
+    const data = (body && typeof body === 'object' && body.data && typeof body.data === 'object')
+      ? body.data
+      : body;
+
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
       return NextResponse.json({ ok: false, error: 'Invalid payload' }, { status: 400 });
     }
 
