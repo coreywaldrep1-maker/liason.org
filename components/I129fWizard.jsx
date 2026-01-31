@@ -67,6 +67,7 @@ const EMPTY = {
     cityBirth: '',
     countryBirth: '',
     nationality: '',
+    race: '',
     inUS: '',
     i94: '',
     classOfAdmission: '',
@@ -673,7 +674,23 @@ function Part2Identity({ form, update, add, remove }) {
         <Field label="Country of citizenship"><input value={B.nationality||''} onChange={e=>update('beneficiary.nationality', e.target.value)} /></Field>
       </div>
 
-      <div className="small" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+
+      
+
+      <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+        <Field label="Race">
+          <select value={B.race||''} onChange={e=>update('beneficiary.race', e.target.value)}>
+            <option value="">Select…</option>
+            <option value="white">White</option>
+            <option value="asian">Asian</option>
+            <option value="black_african_american">Black or African American</option>
+            <option value="native_hawaiian_other_pacific_islander">Native Hawaiian or Other Pacific Islander</option>
+          </select>
+          <div className="small" style={{opacity:.85, marginTop:6}}>One selection only.</div>
+        </Field>
+      </div>
+
+<div className="small" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <strong>Other Names Used</strong>
         <button type="button" className="btn" onClick={onAddOther}>+ Add other name</button>
       </div>
