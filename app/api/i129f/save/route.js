@@ -12,11 +12,12 @@ export async function POST(req) {
     const body = await req.json().catch(() => null);
 
     // Accept either:
-    // 1) { data: { ...formObject } }
-    // 2) { ...formObject }  (older clients / copy-paste)
-    const data = (body && typeof body === 'object' && body.data && typeof body.data === 'object')
-      ? body.data
-      : body;
+    // 1) { data: {...} }
+    // 2) {...}  (older clients)
+    const data =
+      body && typeof body === 'object' && body.data && typeof body.data === 'object'
+        ? body.data
+        : body;
 
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
       return NextResponse.json({ ok: false, error: 'Invalid payload' }, { status: 400 });
@@ -32,7 +33,6 @@ export async function POST(req) {
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('save error', e);
-    const msg = String(e.message || e);
-    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+    return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 400 });
   }
 }
