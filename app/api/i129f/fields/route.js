@@ -1,79 +1,98 @@
 // app/api/i129f/fields/route.js
-import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
-import path from "path";
-import fs from "fs";
-import {
-  PDFDocument,
-  PDFTextField,
-  PDFCheckBox,
-  PDFRadioGroup,
-  PDFDropdown,
-} from "pdf-lib";
+// Returns AcroForm field metadata from the I-129F template PDF.
 
-function inferPageFromName(name) {
-  // Match _page9_ or Page9_
-  const m = String(name).match(/(?:_page|Page)(\d{1,2})/);
-  if (m) return Number(m[1]);
-  return 0;
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+import path from 'node:path';
+import { readFile, access } from 'node:fs/promises';
+import { constants as FS } from 'node:fs';
+import { NextResponse } from 'next/server';
+import { PDFDocument } from 'pdf-lib';
+
+const CANDIDATE_PDFS = [
+  'public/i-129f.pdf',
+  'public/forms/i-129f.pdf',
+  'public/us/i-129f.pdf',
+  'public/forms/i-129f (81).pdf',
+];
+
+async function resolveTemplatePath() {
+  for (const rel of CANDIDATE_PDFS) {
+    const p = path.join(process.cwd(), rel);
+    try {
+      await access(p, FS.R_OK);
+      return p;
+    } catch {}
+  }
+  return path.join(process.cwd(), CANDIDATE_PDFS[0]);
 }
 
-function resolveTemplateBytes() {
-  const publicPath = path.join(process.cwd(), "public", "i-129f.pdf");
-  if (!fs.existsSync(publicPath)) throw new Error("public/i-129f.pdf not found");
-  return fs.readFileSync(publicPath);
+function parsePageNumber(name) {
+  const s = String(name || '');
+  let m = s.match(/(?:_page|Page)(?:_)?(\d{1,2})/);
+  if (!m) m = s.match(/_p(\d{1,2})_/i);
+
+  // one known field has no page marker; it belongs on page 1
+  if (!m && s === 'Petitioner_Select_One_box_Classification_of_Beneficiary') return 1;
+
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
 }
 
-export async function GET(req) {
+function getFieldType(field) {
+  const ctor = field?.constructor?.name || 'Unknown';
+  if (ctor === 'PDFTextField') return 'text';
+  if (ctor === 'PDFCheckBox') return 'checkbox';
+  if (ctor === 'PDFRadioGroup') return 'radio';
+  if (ctor === 'PDFDropdown' || ctor === 'PDFOptionList') return 'dropdown';
+  return 'unknown';
+}
+
+export async function GET() {
   try {
-    await requireAuth(req);
+    const pdfPath = await resolveTemplatePath();
+    const bytes = await readFile(pdfPath);
 
-    const bytes = resolveTemplateBytes();
-    const pdf = await PDFDocument.load(bytes);
-    const form = pdf.getForm();
+    const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const form = pdfDoc.getForm();
+
     const fields = form.getFields();
+    const out = fields
+      .map((f, index) => {
+        const name = f.getName();
+        const type = getFieldType(f);
+        let options = null;
 
-    // Build raw list
-    const raw = fields.map((f) => {
-      const name = f.getName();
-      let kind = "unknown";
-      let options = [];
+        if (type === 'radio' || type === 'dropdown') {
+          try {
+            options = typeof f.getOptions === 'function' ? f.getOptions() : null;
+          } catch {
+            options = null;
+          }
+        }
 
-      if (f instanceof PDFTextField) kind = "text";
-      else if (f instanceof PDFCheckBox) kind = "checkbox";
-      else if (f instanceof PDFRadioGroup) {
-        kind = "radio";
-        options = f.getOptions?.() || [];
-      } else if (f instanceof PDFDropdown) {
-        kind = "dropdown";
-        options = f.getOptions?.() || [];
-      }
+        return {
+          index,
+          name,
+          type,
+          page: parsePageNumber(name),
+          options,
+          ctor: f?.constructor?.name || 'Unknown',
+        };
+      })
+      .filter((f) => f.type !== 'unknown');
 
-      return {
-        name,
-        kind,
-        options,
-        page: inferPageFromName(name),
-      };
-    });
-
-    // Remove container parent fields:
-    // if "X" exists and there are fields "X.something", then X is a parent/container.
-    const nameSet = new Set(raw.map((r) => r.name));
-    const isParent = (n) => {
-      for (const other of nameSet) {
-        if (other.startsWith(n + ".")) return true;
-      }
-      return false;
-    };
-
-    const cleaned = raw.filter((r) => !isParent(r.name));
-
-    // Keep original PDF order (already in Acrobat order),
-    // but make sure pages appear 1..12 in UI grouping.
-    return NextResponse.json({ ok: true, fields: cleaned });
+    return NextResponse.json(
+      { ok: true, template: path.relative(process.cwd(), pdfPath), count: out.length, fields: out },
+      { headers: { 'Cache-Control': 'no-store' } }
+    );
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: String(e?.message || e) },
+      { status: 500, headers: { 'Cache-Control': 'no-store' } }
+    );
   }
 }
