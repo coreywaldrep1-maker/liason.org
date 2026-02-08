@@ -1,43 +1,79 @@
 // app/api/i129f/fields/route.js
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth";
+import path from "path";
+import fs from "fs";
+import {
+  PDFDocument,
+  PDFTextField,
+  PDFCheckBox,
+  PDFRadioGroup,
+  PDFDropdown,
+} from "pdf-lib";
 
-import { NextResponse } from 'next/server';
-import { readFile, access } from 'node:fs/promises';
-import { constants as FS } from 'node:fs';
-import path from 'node:path';
-import { PDFDocument } from 'pdf-lib';
-
-const CANDIDATE_PDFS = [
-  'public/i-129f.pdf',
-  'public/forms/i-129f.pdf',
-  'public/us/i-129f.pdf',
-];
-
-async function resolveTemplatePath() {
-  for (const rel of CANDIDATE_PDFS) {
-    const p = path.join(process.cwd(), rel);
-    try { await access(p, FS.R_OK); return p; } catch {}
-  }
-  // fall back to first
-  return path.join(process.cwd(), CANDIDATE_PDFS[0]);
+function inferPageFromName(name) {
+  // Match _page9_ or Page9_
+  const m = String(name).match(/(?:_page|Page)(\d{1,2})/);
+  if (m) return Number(m[1]);
+  return 0;
 }
 
-export async function GET() {
-  try {
-    const pdfPath = await resolveTemplatePath();
-    const bytes = await readFile(pdfPath);
-    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
-    const form = pdf.getForm();
+function resolveTemplateBytes() {
+  const publicPath = path.join(process.cwd(), "public", "i-129f.pdf");
+  if (!fs.existsSync(publicPath)) throw new Error("public/i-129f.pdf not found");
+  return fs.readFileSync(publicPath);
+}
 
-    const fields = form.getFields().map((f, i) => {
-      const type = f.constructor?.name || 'Unknown';
-      const name = f.getName?.() || `Unknown_${i + 1}`;
-      return { index: i + 1, name, type };
+export async function GET(req) {
+  try {
+    await requireAuth(req);
+
+    const bytes = resolveTemplateBytes();
+    const pdf = await PDFDocument.load(bytes);
+    const form = pdf.getForm();
+    const fields = form.getFields();
+
+    // Build raw list
+    const raw = fields.map((f) => {
+      const name = f.getName();
+      let kind = "unknown";
+      let options = [];
+
+      if (f instanceof PDFTextField) kind = "text";
+      else if (f instanceof PDFCheckBox) kind = "checkbox";
+      else if (f instanceof PDFRadioGroup) {
+        kind = "radio";
+        options = f.getOptions?.() || [];
+      } else if (f instanceof PDFDropdown) {
+        kind = "dropdown";
+        options = f.getOptions?.() || [];
+      }
+
+      return {
+        name,
+        kind,
+        options,
+        page: inferPageFromName(name),
+      };
     });
 
-    return NextResponse.json({ ok: true, template: path.relative(process.cwd(), pdfPath), count: fields.length, fields });
+    // Remove container parent fields:
+    // if "X" exists and there are fields "X.something", then X is a parent/container.
+    const nameSet = new Set(raw.map((r) => r.name));
+    const isParent = (n) => {
+      for (const other of nameSet) {
+        if (other.startsWith(n + ".")) return true;
+      }
+      return false;
+    };
+
+    const cleaned = raw.filter((r) => !isParent(r.name));
+
+    // Keep original PDF order (already in Acrobat order),
+    // but make sure pages appear 1..12 in UI grouping.
+    return NextResponse.json({ ok: true, fields: cleaned });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    console.error(e);
+    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
 }
