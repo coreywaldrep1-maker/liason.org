@@ -1,342 +1,512 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from 'react';
 
-const EMPTY = { pdf: {}, metaVersion: 1 };
+// Dynamic, PDF-driven I-129F wizard
+// - Renders *every* fillable AcroForm field from the template PDF
+// - Persists values under `data.pdf` (keyed by PDF field name)
+// - Downloads a filled PDF using POST /api/i129f/pdf (no need to save first)
 
-function humanize(name) {
-  if (!name) return "";
-  let s = String(name);
+const PAGES = Array.from({ length: 12 }, (_, i) => i + 1);
 
-  // remove child suffix like .a, .b (keep key separately if needed)
-  s = s.replace(/\.[a-z]\b/gi, "");
+const SECTIONS = [
+  ...PAGES.map((p) => ({ key: `page${p}`, label: `Page ${p}` })),
+  { key: 'review', label: 'Review & Download' },
+];
 
-  s = s.replace(/_page\d+\b/gi, "");
-  s = s.replace(/_+/g, " ");
-  s = s.replace(/\bCheckbox(es)?\b/gi, "");
-  s = s.replace(/\bNum\b/gi, "");
-  s = s.replace(/\s+/g, " ").trim();
+const WEIGHT_FIELDS = {
+  hundreds: 'Beneficiary_Information_Biographic_Information_Weight_100_Pound_Digit_Checkbox_page9_4',
+  tens: 'Beneficiary_Information_Biographic_Information_Weight_10_Digit_Holder_Checkbox_page9_4',
+  ones: 'Beneficiary_Information_Biographic_Information_Weight_Single_Pound_Digit_Checkbox_page9_4',
+};
 
-  return s;
+const DATE_HINT_RE = /(\bdate\b|dob|birth|from|to|expires|expiration|issued|signature)/i;
+const TEXTAREA_HINT_RE = /(explanation|additional|details|describe|reason|provide|information)/i;
+
+function prettyPrefix(name) {
+  if (!name) return '';
+  if (name.startsWith('Petitioner_')) return 'Petitioner';
+  if (name.startsWith('Beneficiary_')) return 'Beneficiary';
+  if (name.startsWith('Petitioners_Contact')) return 'Petitioner contact';
+  if (name.startsWith('Interpreter_')) return 'Interpreter';
+  if (name.startsWith('Preparer_') || name.startsWith('Prepare_')) return 'Preparer';
+  if (name.startsWith('Pt') || name.startsWith('Part')) return 'Form';
+  return '';
 }
 
-function isDateLike(name) {
-  const s = String(name).toLowerCase();
-  return s.includes("date") || s.includes("dob");
+function stripPrefix(name) {
+  return String(name || '')
+    .replace(/^Petitioner_\s*/i, '')
+    .replace(/^Beneficiary_\s*/i, '')
+    .replace(/^Petitioners_Contact_?/i, '')
+    .replace(/^Interpreter_?/i, '')
+    .replace(/^Preparer_?/i, '')
+    .replace(/^Prepare_?/i, '');
 }
 
-function usToIso(us) {
-  const m = String(us || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!m) return "";
-  const mm = m[1].padStart(2, "0");
-  const dd = m[2].padStart(2, "0");
-  const yyyy = m[3];
-  return `${yyyy}-${mm}-${dd}`;
+function stripPageSuffix(core) {
+  return String(core || '').replace(/(?:_page|Page)(?:_)?\d{1,2}.*$/i, '');
 }
 
-function isoToUs(iso) {
-  const m = String(iso || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return "";
-  return `${m[2]}/${m[3]}/${m[1]}`;
+function extractItemRef(name) {
+  const s = String(name || '');
+  const m = s.match(/(?:_page|Page)(?:_)?\d{1,2}[_ ]([^_]+)$/);
+  return m ? m[1] : '';
+}
+
+function humanize(s) {
+  const out = String(s || '')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return out
+    .replace(/\bU S\b/g, 'U.S.')
+    .replace(/\bUSCIS\b/g, 'USCIS')
+    .replace(/\bSSN\b/g, 'SSN')
+    .replace(/\bA Number\b/gi, 'A-Number')
+    .replace(/\bZIP\b/g, 'ZIP')
+    .replace(/\bI 94\b/g, 'I-94');
+}
+
+function prettyFieldLabel(name) {
+  const prefix = prettyPrefix(name);
+  const itemRef = extractItemRef(name);
+  let core = stripPrefix(name);
+  core = stripPageSuffix(core);
+  core = humanize(core);
+  const label = prefix ? `${prefix}: ${core}` : core;
+  return { label, itemRef };
+}
+
+function prettyOptionLabel(option) {
+  const s = String(option || '').replace(/^\//, '');
+  const lower = s.toLowerCase();
+
+  if (lower.includes('_yes') || lower.endsWith('yes')) return 'Yes';
+  if (lower.includes('_no') || lower.endsWith('no')) return 'No';
+
+  if (/_apt_/i.test(s) || /\bapt\b/i.test(s)) return 'Apt';
+  if (/_ste_/i.test(s) || /\bste\b/i.test(s) || /suite/i.test(s)) return 'Suite';
+  if (/_flr_/i.test(s) || /\bflr\b/i.test(s) || /floor/i.test(s)) return 'Floor';
+
+  if (/female/i.test(s)) return 'Female';
+  if (/male/i.test(s)) return 'Male';
+
+  return humanize(s);
+}
+
+function toStringValue(v) {
+  if (v === undefined || v === null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : '';
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  return String(v);
 }
 
 function DateInput({ value, onChange }) {
-  const isoValue = useMemo(() => {
-    const v = String(value || "").trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v)) return usToIso(v);
-    return "";
+  const iso = useMemo(() => {
+    if (!value) return '';
+    const parts = String(value).split('/');
+    if (parts.length !== 3) return '';
+    const [mm, dd, yyyy] = parts;
+    if (!yyyy || !mm || !dd) return '';
+    return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
   }, [value]);
 
   return (
     <input
       type="date"
-      value={isoValue}
+      value={iso}
       onChange={(e) => {
-        const nextIso = e.target.value;
-        onChange(nextIso ? isoToUs(nextIso) : "");
+        const v = e.target.value;
+        if (!v) return onChange('');
+        const [yyyy, mm, dd] = v.split('-');
+        if (!yyyy || !mm || !dd) return onChange('');
+        onChange(`${mm}/${dd}/${yyyy}`);
       }}
-      // Calendar width fix (prevents layout blowup)
-      style={{ maxWidth: 220 }}
     />
   );
 }
 
+function Field({ name, label, itemRef, showKey, children }) {
+  return (
+    <label className="small" style={{ display: 'grid', gap: 6, minWidth: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontWeight: 600 }}>{label}</span>
+        {itemRef ? (
+          <span
+            data-no-translate
+            style={{
+              fontFamily:
+                'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+              fontSize: 12,
+              color: '#64748b',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {itemRef}
+          </span>
+        ) : null}
+      </div>
+
+      {showKey ? (
+        <code style={{ color: '#64748b', fontSize: 12, overflowWrap: 'anywhere' }}>{name}</code>
+      ) : null}
+
+      {children}
+    </label>
+  );
+}
+
+function WeightInput({ pdf, onChange, showKey }) {
+  const h = toStringValue(pdf?.[WEIGHT_FIELDS.hundreds]);
+  const t = toStringValue(pdf?.[WEIGHT_FIELDS.tens]);
+  const o = toStringValue(pdf?.[WEIGHT_FIELDS.ones]);
+  const composed = `${h}${t}${o}`.replace(/^0+(?=\d)/, '');
+
+  return (
+    <Field
+      name="(weight)"
+      label="Beneficiary: Biographic information — Weight (lbs)"
+      itemRef="(p9)"
+      showKey={showKey}
+    >
+      <input
+        type="number"
+        min={0}
+        max={999}
+        value={composed}
+        onChange={(e) => {
+          const raw = e.target.value;
+          if (!raw) {
+            onChange({
+              [WEIGHT_FIELDS.hundreds]: '',
+              [WEIGHT_FIELDS.tens]: '',
+              [WEIGHT_FIELDS.ones]: '',
+            });
+            return;
+          }
+          const n = Math.max(0, Math.min(999, Number(raw)));
+          const s = String(Math.trunc(n)).padStart(3, '0');
+          onChange({
+            [WEIGHT_FIELDS.hundreds]: s[0],
+            [WEIGHT_FIELDS.tens]: s[1],
+            [WEIGHT_FIELDS.ones]: s[2],
+          });
+        }}
+      />
+    </Field>
+  );
+}
+
 export default function I129fWizard() {
-  const [form, setForm] = useState(EMPTY);
-  const [fields, setFields] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
+
   const [showKeys, setShowKeys] = useState(false);
-  const [pageIdx, setPageIdx] = useState(0);
+  const [fields, setFields] = useState([]);
+  const [form, setForm] = useState({ pdf: {} });
 
-  // Load fields from PDF (API)
   useEffect(() => {
-    let ignore = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/i129f/fields", { cache: "no-store" });
-        const json = await res.json();
-        if (!ignore && json?.ok) {
-          setFields(json.fields || []);
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    })();
-    return () => (ignore = true);
-  }, []);
+    let cancelled = false;
 
-  // Load saved data
-  useEffect(() => {
-    let ignore = false;
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch("/api/i129f/load", { cache: "no-store" });
-        const json = await res.json().catch(() => ({}));
-        if (!ignore && json?.ok && json?.data) {
-          const loaded = json.data;
-          setForm({
-            ...EMPTY,
-            ...loaded,
-            pdf: { ...(loaded.pdf || {}) },
-            metaVersion: 1,
-          });
-        } else if (!ignore) {
-          setForm(EMPTY);
+        const [fieldsRes, savedRes] = await Promise.all([
+          fetch('/api/i129f/fields', { cache: 'no-store', credentials: 'include' }),
+          fetch('/api/i129f/load', { cache: 'no-store', credentials: 'include' }),
+        ]);
+
+        const fieldsJson = await fieldsRes.json().catch(() => null);
+        const savedJson = await savedRes.json().catch(() => null);
+
+        if (cancelled) return;
+
+        if (fieldsJson?.ok && Array.isArray(fieldsJson.fields)) {
+          const sorted = [...fieldsJson.fields].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+          setFields(sorted);
         }
-      } catch (e) {
-        if (!ignore) setMessage("Unable to load saved data.");
+
+        if (savedJson?.ok && savedJson.data && typeof savedJson.data === 'object') {
+          const d = savedJson.data;
+          setForm({
+            ...d,
+            pdf: d.pdf && typeof d.pdf === 'object' ? d.pdf : {},
+          });
+        } else {
+          setForm({ pdf: {} });
+        }
+      } catch {
+        if (!cancelled) {
+          setFields([]);
+          setForm({ pdf: {} });
+        }
       } finally {
-        if (!ignore) setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
-    return () => (ignore = true);
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const pages = useMemo(() => {
-    const max = Math.max(12, ...fields.map((f) => f.page || 0));
-    const arr = [];
-    for (let i = 1; i <= max; i++) arr.push(i);
-    return arr;
-  }, [fields]);
+  const current = SECTIONS[step] || SECTIONS[0];
 
-  const isReview = pageIdx === pages.length;
-  const currentPage = pages[pageIdx];
+  const fieldsForCurrentPage = useMemo(() => {
+    if (!current?.key?.startsWith('page')) return [];
+    const page = Number(current.key.replace('page', ''));
+    return fields.filter((f) => Number(f.page) === page);
+  }, [current, fields]);
 
-  const pageFields = useMemo(() => {
-    if (isReview) return [];
-    return fields.filter((f) => (f.page || 0) === currentPage);
-  }, [fields, isReview, currentPage]);
-
-  function setPdfValue(pdfName, value) {
+  function setPdfValue(name, value) {
     setForm((prev) => ({
       ...prev,
-      pdf: { ...(prev.pdf || {}), [pdfName]: value },
+      pdf: {
+        ...(prev.pdf || {}),
+        [name]: value,
+      },
     }));
   }
 
-  function getPdfValue(pdfName) {
-    return (form.pdf || {})[pdfName] ?? "";
+  function setPdfValues(map) {
+    setForm((prev) => ({
+      ...prev,
+      pdf: {
+        ...(prev.pdf || {}),
+        ...(map || {}),
+      },
+    }));
   }
 
   async function save() {
     setSaving(true);
-    setMessage("");
     try {
-      const res = await fetch("/api/i129f/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+      const r = await fetch('/api/i129f/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ data: form }),
       });
-      const json = await res.json().catch(() => ({}));
-      if (res.ok && json?.ok) setMessage("Saved.");
-      else setMessage("Save failed.");
+      const j = await r.json().catch(() => null);
+      if (!j?.ok) alert(j?.error || 'Save failed');
+      else alert('Saved!');
     } catch (e) {
-      setMessage("Save failed.");
+      console.error(e);
+      alert('Save failed');
     } finally {
       setSaving(false);
     }
   }
 
-  function next() {
-    setPageIdx((i) => Math.min(i + 1, pages.length));
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  async function downloadPdf() {
+    setDownloading(true);
+    try {
+      const r = await fetch('/api/i129f/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ data: form }),
+      });
+
+      const ct = (r.headers.get('content-type') || '').toLowerCase();
+      if (!r.ok || !ct.includes('application/pdf')) {
+        const txt = await r.text().catch(() => '');
+        throw new Error(txt || `Download failed (status ${r.status})`);
+      }
+
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'i-129f-filled.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      alert('Download failed. Check server logs.');
+    } finally {
+      setDownloading(false);
+    }
   }
 
-  function back() {
-    setPageIdx((i) => Math.max(i - 1, 0));
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+  function renderOneField(meta) {
+    const name = meta.name;
+    const type = meta.type;
+    const options = Array.isArray(meta.options) ? meta.options : [];
 
-  if (loading) {
-    return (
-      <div className="card">
-        <div className="small">Loading I‑129F…</div>
-      </div>
-    );
-  }
+    if (name === WEIGHT_FIELDS.hundreds || name === WEIGHT_FIELDS.tens || name === WEIGHT_FIELDS.ones) {
+      return null;
+    }
 
-  return (
-    <div style={{ display: "grid", gap: 16 }}>
-      {/* Top Nav */}
-      <div className="card">
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          {pages.map((p, idx) => (
-            <button
-              key={p}
-              type="button"
-              className={pageIdx === idx ? "btn btn-primary" : "btn"}
-              onClick={() => setPageIdx(idx)}
-            >
-              Page {p}
-            </button>
-          ))}
+    const { label, itemRef } = prettyFieldLabel(name);
+    const value = form.pdf ? form.pdf[name] : undefined;
 
-          <button
-            type="button"
-            className={isReview ? "btn btn-primary" : "btn"}
-            onClick={() => setPageIdx(pages.length)}
-          >
-            Review / Download
-          </button>
-
-          <div style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center" }}>
-            <label className="small" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input
-                type="checkbox"
-                checked={showKeys}
-                onChange={(e) => setShowKeys(e.target.checked)}
-              />
-              <span>Show PDF field keys</span>
-            </label>
-
-            <button className="btn" type="button" onClick={save} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </div>
-
-        {message ? <div className="small" style={{ marginTop: 10 }}>{message}</div> : null}
-      </div>
-
-      {/* Page Content */}
-      {!isReview ? (
-        <div className="card">
-          <h2 style={{ margin: 0, marginBottom: 10 }}>I‑129F — Page {currentPage}</h2>
-
-          <div className="grid-2">
-            {pageFields.map((f) => (
-              <FieldRenderer
-                key={f.name}
-                field={f}
-                value={getPdfValue(f.name)}
-                onChange={(v) => setPdfValue(f.name, v)}
-                showKeys={showKeys}
-              />
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="card">
-          <h2 style={{ margin: 0, marginBottom: 10 }}>Review / Download</h2>
-          <div className="small" style={{ marginBottom: 10 }}>
-            Save your data, then download the filled PDF.
-          </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button className="btn" type="button" onClick={save} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </button>
-
-            <a className="btn btn-primary" href="/api/i129f/pdf" target="_blank" rel="noreferrer">
-              Download I‑129F PDF
-            </a>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom Nav */}
-      <div className="card">
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <button className="btn" type="button" onClick={back} disabled={pageIdx === 0}>
-            Back
-          </button>
-
-          <button className="btn btn-primary" type="button" onClick={next}>
-            {isReview ? "Stay on Review" : "Next"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FieldRenderer({ field, value, onChange, showKeys }) {
-  const label = humanize(field.name) || field.name;
-
-  // checkbox
-  if (field.kind === "checkbox") {
-    return (
-      <label className="small">
-        <span>
-          {label}
-          {showKeys ? <span className="muted"> — {field.name}</span> : null}
-        </span>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 6 }}>
+    if (type === 'checkbox') {
+      const checked = value === true || value === 'true' || value === 1;
+      return (
+        <Field key={name} name={name} label={label} itemRef={itemRef} showKey={showKeys}>
           <input
             type="checkbox"
-            checked={Boolean(value)}
-            onChange={(e) => onChange(e.target.checked)}
+            checked={!!checked}
+            onChange={(e) => setPdfValue(name, e.target.checked)}
           />
-          <span className="muted">Check if applicable</span>
+        </Field>
+      );
+    }
+
+    if (type === 'radio' || type === 'dropdown') {
+      const currentVal = toStringValue(value);
+      return (
+        <Field key={name} name={name} label={label} itemRef={itemRef} showKey={showKeys}>
+          <select value={currentVal} onChange={(e) => setPdfValue(name, e.target.value)}>
+            <option value="">(blank)</option>
+            {options.map((opt) => (
+              <option key={opt} value={opt}>
+                {prettyOptionLabel(opt)}
+              </option>
+            ))}
+          </select>
+        </Field>
+      );
+    }
+
+    const v = toStringValue(value);
+    const dateLike = DATE_HINT_RE.test(name);
+    const useTextarea = TEXTAREA_HINT_RE.test(name) && !dateLike;
+
+    return (
+      <Field key={name} name={name} label={label} itemRef={itemRef} showKey={showKeys}>
+        {dateLike ? (
+          <DateInput value={v} onChange={(next) => setPdfValue(name, next)} />
+        ) : useTextarea ? (
+          <textarea rows={4} value={v} onChange={(e) => setPdfValue(name, e.target.value)} />
+        ) : (
+          <input value={v} onChange={(e) => setPdfValue(name, e.target.value)} />
+        )}
+      </Field>
+    );
+  }
+
+  function renderPage(pageFields) {
+    const pageNum = Number(current.key.replace('page', ''));
+    const nodes = [];
+    let weightInserted = false;
+
+    for (const f of pageFields) {
+      if (
+        pageNum === 9 &&
+        (f.name === WEIGHT_FIELDS.hundreds || f.name === WEIGHT_FIELDS.tens || f.name === WEIGHT_FIELDS.ones)
+      ) {
+        if (!weightInserted) {
+          nodes.push(
+            <WeightInput
+              key="__weight__"
+              pdf={form.pdf || {}}
+              showKey={showKeys}
+              onChange={(map) => setPdfValues(map)}
+            />
+          );
+          weightInserted = true;
+        }
+        continue;
+      }
+
+      const node = renderOneField(f);
+      if (node) nodes.push(node);
+    }
+
+    return (
+      <div className="card" style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>Page {pageNum}</h3>
+          <div className="small" style={{ color: '#64748b' }}>
+            {pageFields.length} fields
+          </div>
         </div>
-      </label>
+
+        {pageFields.length === 0 ? (
+          <div className="small" style={{ color: '#b45309' }}>
+            No fields detected for this page.
+          </div>
+        ) : (
+          <div className="grid-auto">{nodes}</div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>
+            ← Prev
+          </button>
+          <button
+            className="btn"
+            disabled={step >= SECTIONS.length - 1}
+            onClick={() => setStep((s) => Math.min(SECTIONS.length - 1, s + 1))}
+          >
+            Next →
+          </button>
+        </div>
+      </div>
     );
   }
 
-  // radio / dropdown
-  if (field.kind === "radio" || field.kind === "dropdown") {
+  function renderReview() {
     return (
-      <label className="small" style={{ gridColumn: "1 / -1" }}>
-        <span>
-          {label}
-          {showKeys ? <span className="muted"> — {field.name}</span> : null}
-        </span>
-        <select value={String(value || "")} onChange={(e) => onChange(e.target.value)}>
-          <option value="">— Select —</option>
-          {(field.options || []).map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-        </select>
-      </label>
-    );
-  }
+      <div className="card" style={{ display: 'grid', gap: 12 }}>
+        <h3 style={{ margin: 0 }}>Review & Download</h3>
 
-  // text (date vs normal)
-  if (isDateLike(field.name)) {
-    return (
-      <label className="small">
-        <span>
-          {label}
-          {showKeys ? <span className="muted"> — {field.name}</span> : null}
-        </span>
-        <DateInput value={value} onChange={onChange} />
-      </label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+
+          <button className="btn" onClick={downloadPdf} disabled={downloading}>
+            {downloading ? 'Generating…' : 'Download filled PDF'}
+          </button>
+
+          <a className="btn" href="/api/i129f/pdf" target="_blank" rel="noreferrer">
+            Download from saved (GET)
+          </a>
+        </div>
+      </div>
     );
   }
 
   return (
-    <label className="small">
-      <span>
-        {label}
-        {showKeys ? <span className="muted"> — {field.name}</span> : null}
-      </span>
-      <input type="text" value={String(value || "")} onChange={(e) => onChange(e.target.value)} />
-    </label>
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div className="card" style={{ display: 'grid', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {SECTIONS.map((s, i) => (
+              <button
+                key={s.key}
+                className={`btn ${i === step ? 'primary' : ''}`}
+                onClick={() => setStep(i)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="checkbox" checked={showKeys} onChange={(e) => setShowKeys(e.target.checked)} />
+            Show field keys
+          </label>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="card">Loading…</div>
+      ) : current.key === 'review' ? (
+        renderReview()
+      ) : (
+        renderPage(fieldsForCurrentPage)
+      )}
+    </div>
   );
 }
