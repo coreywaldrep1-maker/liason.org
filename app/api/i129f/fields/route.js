@@ -1,21 +1,17 @@
 // app/api/i129f/fields/route.js
-// Returns AcroForm field metadata from the I-129F template PDF.
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const runtime = 'nodejs';
 
-import path from 'node:path';
+import { NextResponse } from 'next/server';
 import { readFile, access } from 'node:fs/promises';
 import { constants as FS } from 'node:fs';
-import { NextResponse } from 'next/server';
+import path from 'node:path';
 import { PDFDocument } from 'pdf-lib';
 
 const CANDIDATE_PDFS = [
   'public/i-129f.pdf',
   'public/forms/i-129f.pdf',
   'public/us/i-129f.pdf',
-  'public/forms/i-129f (81).pdf',
 ];
 
 async function resolveTemplatePath() {
@@ -26,73 +22,161 @@ async function resolveTemplatePath() {
       return p;
     } catch {}
   }
+  // fall back to first
   return path.join(process.cwd(), CANDIDATE_PDFS[0]);
 }
 
-function parsePageNumber(name) {
+function inferPageFromName(name) {
   const s = String(name || '');
-  let m = s.match(/(?:_page|Page)(?:_)?(\d{1,2})/);
-  if (!m) m = s.match(/_p(\d{1,2})_/i);
-
-  // one known field has no page marker; it belongs on page 1
-  if (!m && s === 'Petitioner_Select_One_box_Classification_of_Beneficiary') return 1;
-
-  if (!m) return null;
-  const n = Number(m[1]);
-  return Number.isFinite(n) ? n : null;
-}
-
-function getFieldType(field) {
-  const ctor = field?.constructor?.name || 'Unknown';
-  if (ctor === 'PDFTextField') return 'text';
-  if (ctor === 'PDFCheckBox') return 'checkbox';
-  if (ctor === 'PDFRadioGroup') return 'radio';
-  if (ctor === 'PDFDropdown' || ctor === 'PDFOptionList') return 'dropdown';
-  return 'unknown';
+  const m = s.match(/(?:_page|Page)(\d{1,2})/);
+  if (m) return Number(m[1]);
+  return 0;
 }
 
 export async function GET() {
   try {
     const pdfPath = await resolveTemplatePath();
     const bytes = await readFile(pdfPath);
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const form = pdf.getForm();
 
-    const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-    const form = pdfDoc.getForm();
+    const all = form.getFields().map((f, i) => {
+      const type = f.constructor?.name || 'Unknown';
+      const name = f.getName?.() || `Unknown_${i + 1}`;
+      let kind = 'unknown';
+      let options = [];
 
-    const fields = form.getFields();
-    const out = fields
-      .map((f, index) => {
-        const name = f.getName();
-        const type = getFieldType(f);
-        let options = null;
+      // Rely on constructor names so this works even if pdf-lib classes are bundled differently.
+      if (type === 'PDFTextField') kind = 'text';
+      else if (type === 'PDFCheckBox') kind = 'checkbox';
+      else if (type === 'PDFRadioGroup') {
+        kind = 'radio';
+        try { options = f.getOptions?.() || []; } catch {}
+      } else if (type === 'PDFDropdown') {
+        kind = 'dropdown';
+        try { options = f.getOptions?.() || []; } catch {}
+      }
 
-        if (type === 'radio' || type === 'dropdown') {
-          try {
-            options = typeof f.getOptions === 'function' ? f.getOptions() : null;
-          } catch {
-            options = null;
-          }
-        }
+      return {
+        index: i + 1,
+        name,
+        type,
+        kind,
+        options,
+        page: inferPageFromName(name),
+      };
+    });
 
-        return {
-          index,
-          name,
-          type,
-          page: parsePageNumber(name),
-          options,
-          ctor: f?.constructor?.name || 'Unknown',
-        };
-      })
-      .filter((f) => f.type !== 'unknown');
+    // Filter out non-leaf "parent" fields.
+    // If a field "X" exists and any other field starts with "X.", treat X as a parent container.
+    const nameSet = new Set(all.map((x) => x.name));
+    const isParent = (n) => {
+      for (const other of nameSet) {
+        if (other.startsWith(n + '.')) return true;
+      }
+      return false;
+    };
 
-    return NextResponse.json(
-      { ok: true, template: path.relative(process.cwd(), pdfPath), count: out.length, fields: out },
-      { headers: { 'Cache-Control': 'no-store' } }
-    );
+    const fields = all.filter((x) => !isParent(x.name));
+
+    return NextResponse.json({
+      ok: true,
+      template: path.relative(process.cwd(), pdfPath),
+      count: fields.length,
+      fields,
+    });
   } catch (e) {
-    return NextResponse.json(
-      { ok: false, error: String(e?.message || e) },
-      { status: 500, headers: { 'Cache-Control': 'no-store' } }
-    );
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+  }
+}
+// app/api/i129f/fields/route.js
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
+import { NextResponse } from 'next/server';
+import { readFile, access } from 'node:fs/promises';
+import { constants as FS } from 'node:fs';
+import path from 'node:path';
+import { PDFDocument } from 'pdf-lib';
+
+const CANDIDATE_PDFS = [
+  'public/i-129f.pdf',
+  'public/forms/i-129f.pdf',
+  'public/us/i-129f.pdf',
+];
+
+async function resolveTemplatePath() {
+  for (const rel of CANDIDATE_PDFS) {
+    const p = path.join(process.cwd(), rel);
+    try {
+      await access(p, FS.R_OK);
+      return p;
+    } catch {}
+  }
+  // fall back to first
+  return path.join(process.cwd(), CANDIDATE_PDFS[0]);
+}
+
+function inferPageFromName(name) {
+  const s = String(name || '');
+  const m = s.match(/(?:_page|Page)(\d{1,2})/);
+  if (m) return Number(m[1]);
+  return 0;
+}
+
+export async function GET() {
+  try {
+    const pdfPath = await resolveTemplatePath();
+    const bytes = await readFile(pdfPath);
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const form = pdf.getForm();
+
+    const all = form.getFields().map((f, i) => {
+      const type = f.constructor?.name || 'Unknown';
+      const name = f.getName?.() || `Unknown_${i + 1}`;
+      let kind = 'unknown';
+      let options = [];
+
+      // Rely on constructor names so this works even if pdf-lib classes are bundled differently.
+      if (type === 'PDFTextField') kind = 'text';
+      else if (type === 'PDFCheckBox') kind = 'checkbox';
+      else if (type === 'PDFRadioGroup') {
+        kind = 'radio';
+        try { options = f.getOptions?.() || []; } catch {}
+      } else if (type === 'PDFDropdown') {
+        kind = 'dropdown';
+        try { options = f.getOptions?.() || []; } catch {}
+      }
+
+      return {
+        index: i + 1,
+        name,
+        type,
+        kind,
+        options,
+        page: inferPageFromName(name),
+      };
+    });
+
+    // Filter out non-leaf "parent" fields.
+    // If a field "X" exists and any other field starts with "X.", treat X as a parent container.
+    const nameSet = new Set(all.map((x) => x.name));
+    const isParent = (n) => {
+      for (const other of nameSet) {
+        if (other.startsWith(n + '.')) return true;
+      }
+      return false;
+    };
+
+    const fields = all.filter((x) => !isParent(x.name));
+
+    return NextResponse.json({
+      ok: true,
+      template: path.relative(process.cwd(), pdfPath),
+      count: fields.length,
+      fields,
+    });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
