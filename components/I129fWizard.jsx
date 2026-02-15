@@ -121,13 +121,13 @@ const EMPTY = {
     ],
 
     employment: [
-      { employer: '', occupation: '', street: '', unitType: '', unitNumber: '', city: '', state: '', zip: '', country: '', from: '', to: '' },
-      { employer: '', occupation: '', street: '', unitType: '', unitNumber: '', city: '', state: '', zip: '', country: '', from: '', to: '' },
+      { employer: '', occupation: '', street: '', unitType: '', unitNumber: '', city: '', state: '', zip: '', province: '', postal: '', country: '', from: '', to: '' },
+      { employer: '', occupation: '', street: '', unitType: '', unitNumber: '', city: '', state: '', zip: '', province: '', postal: '', country: '', from: '', to: '' },
     ],
 
     parents: [
-      { lastName: '', firstName: '', middleName: '', dob: '', cityBirth: '', countryBirth: '', currentCityCountry: '' },
-      { lastName: '', firstName: '', middleName: '', dob: '', cityBirth: '', countryBirth: '', currentCityCountry: '' },
+      { lastName: '', firstName: '', middleName: '', dob: '', sex: '', countryBirth: '', residenceCity: '', residenceCountry: '', cityBirth: '', currentCityCountry: '' },
+      { lastName: '', firstName: '', middleName: '', dob: '', sex: '', countryBirth: '', residenceCity: '', residenceCountry: '', cityBirth: '', currentCityCountry: '' },
     ],
   },
 
@@ -266,6 +266,25 @@ export default function I129fWizard() {
           merged.petitioner.criminal = { ...EMPTY.petitioner.criminal, ...(j.data?.petitioner?.criminal || {}) };
           merged.beneficiary = { ...EMPTY.beneficiary, ...(j.data.beneficiary || {}) };
           merged.beneficiary.mailing = { ...EMPTY.beneficiary.mailing, ...(j.data?.beneficiary?.mailing || {}) };
+
+          // Ensure Employment + Parents sections always render two entries (and include any newer fields)
+          const empT = EMPTY.beneficiary.employment[0];
+          merged.beneficiary.employment = ensureArrayLen(merged.beneficiary.employment, 2, () => deepClone(empT))
+            .map((job) => ({ ...deepClone(empT), ...(job || {}) }));
+
+          const parT = EMPTY.beneficiary.parents[0];
+          merged.beneficiary.parents = ensureArrayLen(merged.beneficiary.parents, 2, () => deepClone(parT))
+            .map((p) => {
+              const base = { ...deepClone(parT), ...(p || {}) };
+              // Migration: split "currentCityCountry" into residence fields if needed
+              if ((!base.residenceCity || !base.residenceCountry) && base.currentCityCountry && base.currentCityCountry.includes(',')) {
+                const [city, ...rest] = base.currentCityCountry.split(',');
+                const country = rest.join(',').trim();
+                base.residenceCity = base.residenceCity || city.trim();
+                base.residenceCountry = base.residenceCountry || country;
+              }
+              return base;
+            });
           merged.contact = { ...EMPTY.contact, ...(j.data.contact || {}) };
           merged.interpreter = { ...EMPTY.interpreter, ...(j.data.interpreter || {}) };
           merged.preparer = { ...EMPTY.preparer, ...(j.data.preparer || {}) };
@@ -387,6 +406,13 @@ export default function I129fWizard() {
       <div className="card" style={{display:'grid', gap:12}}>
         {content}
       </div>
+
+      <div className="i129f-save-dock" aria-live="polite">
+        {msg ? <div className="i129f-save-toast">{msg}</div> : null}
+        <button type="button" className="btn primary" onClick={save} disabled={busy}>
+          {busy ? 'Saving…' : 'Save'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -429,6 +455,47 @@ function DateInput({ value, onChange }) {
       value={toIso(value)}
       onChange={(e) => onChange(fromIso(e.target.value))}
     />
+  );
+}
+
+function ensureArrayLen(arr, minLen, factory) {
+  const a = Array.isArray(arr) ? arr : [];
+  if (a.length >= minLen) return a;
+  const out = a.slice();
+  while (out.length < minLen) out.push(factory());
+  return out;
+}
+
+function YesNoSelect({ value, onChange, placeholder = '— Select —' }) {
+  const raw = (value ?? '').toString().trim();
+  const v = raw.toLowerCase();
+  const normalized =
+    v === 'y' || v === 'yes' || v === 'true' ? 'yes'
+    : v === 'n' || v === 'no' || v === 'false' ? 'no'
+    : raw;
+
+  return (
+    <select value={normalized} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{placeholder}</option>
+      <option value="yes">Yes</option>
+      <option value="no">No</option>
+    </select>
+  );
+}
+
+function RaceSelect({ value, onChange }) {
+  const raw = (value ?? '').toString().trim();
+  const v = raw.toLowerCase();
+  const normalized = ['white','asian','black','nhopi'].includes(v) ? v : raw;
+
+  return (
+    <select value={normalized} onChange={(e) => onChange(e.target.value)}>
+      <option value="">— Select —</option>
+      <option value="white">White</option>
+      <option value="asian">Asian</option>
+      <option value="black">Black or African American</option>
+      <option value="nhopi">Native Hawaiian or Other Pacific Islander</option>
+    </select>
   );
 }
 
@@ -789,21 +856,21 @@ function Part2Identity({ form, update, add, remove }) {
       <div className="card" style={{display:'grid', gap:10}}>
         <div className="small"><strong>Biographic Information</strong></div>
         <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10}}>
-          <Field label="Ethnicity — Hispanic or Latino? (yes/no)">
-            <input value={B.ethnicityHispanic||''} onChange={e=>update('beneficiary.ethnicityHispanic', e.target.value)} placeholder="yes / no" />
+          <Field label="Ethnicity — Hispanic or Latino?">
+            <YesNoSelect value={B.ethnicityHispanic||''} onChange={v=>update('beneficiary.ethnicityHispanic', v)} />
           </Field>
-          <Field label="Race (white/asian/black/nhopi)">
-            <input value={B.race||''} onChange={e=>update('beneficiary.race', e.target.value)} placeholder="white / asian / black / nhopi" />
+          <Field label="Race">
+            <RaceSelect value={B.race||''} onChange={v=>update('beneficiary.race', v)} />
           </Field>
           <Field label="Height (Feet)">
-            <input type="number" min="0" max="8" value={B.heightFeet||''} onChange={e=>update('beneficiary.heightFeet', e.target.value)} />
+            <input className="measure-sm" type="number" min="0" max="8" value={B.heightFeet||''} onChange={e=>update('beneficiary.heightFeet', e.target.value)} />
           </Field>
           <Field label="Height (Inches)">
-            <input type="number" min="0" max="11" value={B.heightInches||''} onChange={e=>update('beneficiary.heightInches', e.target.value)} />
+            <input className="measure-sm" type="number" min="0" max="11" value={B.heightInches||''} onChange={e=>update('beneficiary.heightInches', e.target.value)} />
           </Field>
 
           <Field label="Weight (lbs)">
-            <input type="number" min="0" value={B.weight||''} onChange={e=>update('beneficiary.weight', e.target.value)} />
+            <input className="measure-sm" type="number" min="0" value={B.weight||''} onChange={e=>update('beneficiary.weight', e.target.value)} />
           </Field>
 
           <Field label="Eye Color">
@@ -983,117 +1050,112 @@ function Part2Addresses({ form, update }) {
  *  Part 2 — Employment
  *  ========================= */
 function Part2Employment({ form, update }) {
-  const jobs = Array.isArray(form?.beneficiary?.employment) ? form.beneficiary.employment : [];
+  const jobs = ensureArrayLen(form?.beneficiary?.employment, 2, () => deepClone(EMPTY.beneficiary.employment[0]));
   return (
     <section style={{display:'grid', gap:12}}>
       <h3 style={{margin:0}}>Part 2 — Employment</h3>
+      <p className="hint">Enter up to 2 most recent employers.</p>
 
-      {jobs.map((j, idx) => (
-        <div key={idx} className="card" style={{display:'grid', gap:10}}>
-          <div className="small"><strong>Employer {idx+1}</strong></div>
+      {jobs.map((job, idx)=>(
+        <section key={idx} className="card" style={{display:'grid', gap:10}}>
+          <div style={{display:'flex', justifyContent:'space-between', gap:12, alignItems:'baseline'}}>
+            <strong>Employer #{idx+1}</strong>
+            <span className="small muted">Most recent first</span>
+          </div>
 
           <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10}}>
-            <Field label="Employer Name">
-              <input value={j.employer||''} onChange={e=>update(`beneficiary.employment.${idx}.employer`, e.target.value)} />
+            <Field label="Name of Employer">
+              <input value={job.employer||''} onChange={e=>update(`beneficiary.employment.${idx}.employer`, e.target.value)} />
             </Field>
             <Field label="Occupation">
-              <input value={j.occupation||''} onChange={e=>update(`beneficiary.employment.${idx}.occupation`, e.target.value)} />
+              <input value={job.occupation||''} onChange={e=>update(`beneficiary.employment.${idx}.occupation`, e.target.value)} />
             </Field>
           </div>
 
           <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10}}>
-            <Field label="Street">
-              <input value={j.street||''} onChange={e=>update(`beneficiary.employment.${idx}.street`, e.target.value)} />
+            <Field label="Street Number and Name">
+              <input value={job.street||''} onChange={e=>update(`beneficiary.employment.${idx}.street`, e.target.value)} />
             </Field>
             <Field label="Apt/Ste/Flr + Number">
-              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
-                <select value={j.unitType||''} onChange={e=>update(`beneficiary.employment.${idx}.unitType`, e.target.value)}>
+              <div style={{display:'grid', gridTemplateColumns:'120px 1fr', gap:8}}>
+                <select value={job.unitType||''} onChange={e=>update(`beneficiary.employment.${idx}.unitType`, e.target.value)}>
                   <option value="">(none)</option>
-                  <option value="Apt">Apt</option>
-                  <option value="Ste">Ste</option>
-                  <option value="Flr">Flr</option>
+                  <option value="apt">Apt</option>
+                  <option value="ste">Ste</option>
+                  <option value="flr">Flr</option>
                 </select>
-                <input value={j.unitNumber||''} onChange={e=>update(`beneficiary.employment.${idx}.unitNumber`, e.target.value)} placeholder="Number" />
+                <input value={job.unitNumber||''} onChange={e=>update(`beneficiary.employment.${idx}.unitNumber`, e.target.value)} />
               </div>
             </Field>
           </div>
 
           <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
-            <Field label="City">
-              <input value={j.city||''} onChange={e=>update(`beneficiary.employment.${idx}.city`, e.target.value)} />
-            </Field>
-            <Field label="State">
-              <input value={j.state||''} onChange={e=>update(`beneficiary.employment.${idx}.state`, e.target.value)} />
-            </Field>
-            <Field label="ZIP">
-              <input value={j.zip||''} onChange={e=>update(`beneficiary.employment.${idx}.zip`, e.target.value)} />
-            </Field>
+            <Field label="City"><input value={job.city||''} onChange={e=>update(`beneficiary.employment.${idx}.city`, e.target.value)} /></Field>
+            <Field label="State"><input value={job.state||''} onChange={e=>update(`beneficiary.employment.${idx}.state`, e.target.value)} /></Field>
+            <Field label="ZIP"><input value={job.zip||''} onChange={e=>update(`beneficiary.employment.${idx}.zip`, e.target.value)} /></Field>
           </div>
 
           <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
-            <Field label="Country">
-              <input value={j.country||''} onChange={e=>update(`beneficiary.employment.${idx}.country`, e.target.value)} />
-            </Field>
-            <Field label="From">
-              <DateInput value={j.from||''} onChange={v=>update(`beneficiary.employment.${idx}.from`, v)} />
-            </Field>
-            <Field label="To">
-              <DateInput value={j.to||''} onChange={v=>update(`beneficiary.employment.${idx}.to`, v)} />
-            </Field>
+            <Field label="Province"><input value={job.province||''} onChange={e=>update(`beneficiary.employment.${idx}.province`, e.target.value)} /></Field>
+            <Field label="Postal Code"><input value={job.postal||''} onChange={e=>update(`beneficiary.employment.${idx}.postal`, e.target.value)} /></Field>
+            <Field label="Country"><input value={job.country||''} onChange={e=>update(`beneficiary.employment.${idx}.country`, e.target.value)} /></Field>
           </div>
-        </div>
+
+          <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10}}>
+            <Field label="From (MM/DD/YYYY)"><DateInput value={job.from||''} onChange={v=>update(`beneficiary.employment.${idx}.from`, v)} /></Field>
+            <Field label="To (MM/DD/YYYY)"><DateInput value={job.to||''} onChange={v=>update(`beneficiary.employment.${idx}.to`, v)} /></Field>
+          </div>
+        </section>
       ))}
     </section>
   );
 }
+
 
 /** =========================
  *  Part 2 — Beneficiary Parents
  *  ========================= */
 function Part2Parents({ form, update }) {
-  const parents = Array.isArray(form?.beneficiary?.parents) ? form.beneficiary.parents : [];
+  const parents = ensureArrayLen(form?.beneficiary?.parents, 2, () => deepClone(EMPTY.beneficiary.parents[0]));
   return (
     <section style={{display:'grid', gap:12}}>
       <h3 style={{margin:0}}>Part 2 — Beneficiary Parents</h3>
+      <p className="hint">Enter Parent 1 and Parent 2.</p>
 
-      {parents.map((p, idx) => (
-        <div key={idx} className="card" style={{display:'grid', gap:10}}>
-          <div className="small"><strong>Parent {idx+1}</strong></div>
-
-          <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
-            <Field label="Last Name">
-              <input value={p.lastName||''} onChange={e=>update(`beneficiary.parents.${idx}.lastName`, e.target.value)} />
-            </Field>
-            <Field label="First Name">
-              <input value={p.firstName||''} onChange={e=>update(`beneficiary.parents.${idx}.firstName`, e.target.value)} />
-            </Field>
-            <Field label="Middle Name">
-              <input value={p.middleName||''} onChange={e=>update(`beneficiary.parents.${idx}.middleName`, e.target.value)} />
-            </Field>
+      {parents.map((p, idx)=>(
+        <section key={idx} className="card" style={{display:'grid', gap:10}}>
+          <div style={{display:'flex', justifyContent:'space-between', gap:12, alignItems:'baseline'}}>
+            <strong>Parent #{idx+1}</strong>
           </div>
 
           <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
-            <Field label="Date of Birth">
-              <DateInput value={p.dob||''} onChange={v=>update(`beneficiary.parents.${idx}.dob`, v)} />
-            </Field>
-            <Field label="City/Town/Village of Birth">
-              <input value={p.cityBirth||''} onChange={e=>update(`beneficiary.parents.${idx}.cityBirth`, e.target.value)} />
-            </Field>
-            <Field label="Country of Birth">
-              <input value={p.countryBirth||''} onChange={e=>update(`beneficiary.parents.${idx}.countryBirth`, e.target.value)} />
-            </Field>
+            <Field label="Last Name"><input value={p.lastName||''} onChange={e=>update(`beneficiary.parents.${idx}.lastName`, e.target.value)} /></Field>
+            <Field label="First Name"><input value={p.firstName||''} onChange={e=>update(`beneficiary.parents.${idx}.firstName`, e.target.value)} /></Field>
+            <Field label="Middle Name"><input value={p.middleName||''} onChange={e=>update(`beneficiary.parents.${idx}.middleName`, e.target.value)} /></Field>
           </div>
 
-          <div style={{display:'grid', gridTemplateColumns:'repeat(1,1fr)', gap:10}}>
-            <Field label="Current City/Country of Residence">
-              <input value={p.currentCityCountry||''} onChange={e=>update(`beneficiary.parents.${idx}.currentCityCountry`, e.target.value)} />
+          <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
+            <Field label="Date of Birth (MM/DD/YYYY)"><DateInput value={p.dob||''} onChange={v=>update(`beneficiary.parents.${idx}.dob`, v)} /></Field>
+            <Field label="Sex">
+              <select value={p.sex||''} onChange={e=>update(`beneficiary.parents.${idx}.sex`, e.target.value)}>
+                <option value="">(select)</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
             </Field>
+            <Field label="Country of Birth"><input value={p.countryBirth||''} onChange={e=>update(`beneficiary.parents.${idx}.countryBirth`, e.target.value)} /></Field>
           </div>
-        </div>
+
+          <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10}}>
+            <Field label="City/Town/Village of Residence"><input value={p.residenceCity||''} onChange={e=>update(`beneficiary.parents.${idx}.residenceCity`, e.target.value)} /></Field>
+            <Field label="Country of Residence"><input value={p.residenceCountry||''} onChange={e=>update(`beneficiary.parents.${idx}.residenceCountry`, e.target.value)} /></Field>
+          </div>
+        </section>
       ))}
     </section>
   );
 }
+
 
 /** =========================
  *  Part 3 — Criminal
@@ -1106,20 +1168,20 @@ function Part3Criminal({ form, update }) {
 
       <div className="card" style={{display:'grid', gap:10}}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10}}>
-          <Field label="Have you ever been issued a restraining/protection order? (yes/no)">
-            <input value={C.restrainingOrder||''} onChange={e=>update('petitioner.criminal.restrainingOrder', e.target.value)} />
+          <Field label="Have you ever been issued a restraining/protection order?">
+            <YesNoSelect value={C.restrainingOrder||''} onChange={v=>update('petitioner.criminal.restrainingOrder', v)} />
           </Field>
 
-          <Field label="Have you ever been arrested/convicted for any of the offenses? (2a) (yes/no)">
-            <input value={C.arrestedOrConvicted2a||''} onChange={e=>update('petitioner.criminal.arrestedOrConvicted2a', e.target.value)} />
+          <Field label="Have you ever been arrested/convicted for any of the offenses? (2a)">
+            <YesNoSelect value={C.arrestedOrConvicted2a||''} onChange={v=>update('petitioner.criminal.arrestedOrConvicted2a', v)} />
           </Field>
 
-          <Field label="Arrested/convicted (2b) (yes/no)">
-            <input value={C.arrestedOrConvicted2b||''} onChange={e=>update('petitioner.criminal.arrestedOrConvicted2b', e.target.value)} />
+          <Field label="Arrested/convicted (2b)">
+            <YesNoSelect value={C.arrestedOrConvicted2b||''} onChange={v=>update('petitioner.criminal.arrestedOrConvicted2b', v)} />
           </Field>
 
-          <Field label="Arrested/convicted (2c) (yes/no)">
-            <input value={C.arrestedOrConvicted2c||''} onChange={e=>update('petitioner.criminal.arrestedOrConvicted2c', e.target.value)} />
+          <Field label="Arrested/convicted (2c)">
+            <YesNoSelect value={C.arrestedOrConvicted2c||''} onChange={v=>update('petitioner.criminal.arrestedOrConvicted2c', v)} />
           </Field>
         </div>
 
@@ -1138,8 +1200,8 @@ function Part3Criminal({ form, update }) {
         </label>
 
         <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10}}>
-          <Field label="Ever arrested/cited/charged? (yes/no)">
-            <input value={C.everArrestedCitedCharged||''} onChange={e=>update('petitioner.criminal.everArrestedCitedCharged', e.target.value)} />
+          <Field label="Ever arrested/cited/charged?">
+            <YesNoSelect value={C.everArrestedCitedCharged||''} onChange={v=>update('petitioner.criminal.everArrestedCitedCharged', v)} />
           </Field>
           <Field label="Waiver type (if any)">
             <input value={C.waiverType||''} onChange={e=>update('petitioner.criminal.waiverType', e.target.value)} />
@@ -1165,8 +1227,8 @@ function Part4Other({ form, update }) {
 
       <div className="card" style={{display:'grid', gap:10}}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
-          <Field label="In the U.S. now? (Yes/No)">
-            <input value={B.inUS||''} onChange={e=>update('beneficiary.inUS', e.target.value)} />
+          <Field label="In the U.S. now?">
+            <YesNoSelect value={B.inUS||''} onChange={v=>update('beneficiary.inUS', v)} />
           </Field>
           <Field label="I-94 Number (if any)">
             <input value={B.i94||''} onChange={e=>update('beneficiary.i94', e.target.value)} />
@@ -1239,7 +1301,7 @@ function Parts5to7({ form, update }) {
       <div className="card" style={{display:'grid', gap:10}}>
         <div className="small"><strong>Preparer</strong></div>
         <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10}}>
-          <Field label="Is attorney/rep? (yes/no)"><input value={P.isAttorney||''} onChange={e=>update('preparer.isAttorney', e.target.value)} /></Field>
+          <Field label="Is attorney/rep?"><YesNoSelect value={P.isAttorney||''} onChange={v=>update('preparer.isAttorney', v)} /></Field>
           <Field label="Last name"><input value={P.lastName||''} onChange={e=>update('preparer.lastName', e.target.value)} /></Field>
           <Field label="First name"><input value={P.firstName||''} onChange={e=>update('preparer.firstName', e.target.value)} /></Field>
         </div>
