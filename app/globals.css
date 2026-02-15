@@ -349,3 +349,39 @@ thead th {
     grid-template-columns: 1fr !important;
   }
 }
+
+
+/* Small measurement inputs (height/weight) */
+.i129f-wizard .measure-sm {
+  max-width: 140px;
+}
+
+/* Fixed Save button + Saved toast */
+.i129f-save-dock {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  display: grid;
+  gap: 8px;
+  align-items: end;
+  justify-items: end;
+  z-index: 50;
+}
+
+.i129f-save-toast {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  max-width: min(360px, calc(100vw - 36px));
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+}
+
+@media (max-width: 640px) {
+  .i129f-save-dock {
+    right: 12px;
+    bottom: 12px;
+  }
+}
